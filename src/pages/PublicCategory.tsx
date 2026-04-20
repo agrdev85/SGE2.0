@@ -11,6 +11,23 @@ const PublicCategory: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const [category, setCategory] = useState<CMSCategory | null>(null);
   const [articles, setArticles] = useState<CMSArticle[]>([]);
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setIsDark(mediaQuery.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDark]);
 
   useEffect(() => {
     if (slug) {
@@ -28,14 +45,14 @@ const PublicCategory: React.FC = () => {
       <>
         <PublicHeader />
         <div className="container mx-auto px-4 py-16">
-          <h1 className="text-4xl font-bold text-center">Categoría no encontrada</h1>
-          <p className="text-center mt-4 text-gray-600">
+          <h1 className="text-4xl font-bold text-center text-foreground">Categoría no encontrada</h1>
+          <p className="text-center mt-4 text-muted-foreground">
             La categoría que buscas no existe.
           </p>
           <div className="text-center mt-8">
             <Link
               to="/blog"
-              className="text-blue-600 hover:underline"
+              className="text-primary hover:underline"
             >
               ← Volver al blog
             </Link>
@@ -51,19 +68,19 @@ const PublicCategory: React.FC = () => {
       
       <div className="container mx-auto px-4 py-8">
         {/* Breadcrumb */}
-        <div className="text-sm text-gray-600 mb-6">
-          <Link to="/" className="hover:underline">Inicio</Link>
+        <div className="text-sm text-muted-foreground mb-6">
+          <Link to="/" className="hover:text-foreground">Inicio</Link>
           {' > '}
-          <Link to="/blog" className="hover:underline">Blog</Link>
+          <Link to="/blog" className="hover:text-foreground">Blog</Link>
           {' > '}
-          <span>{category.name}</span>
+          <span className="text-foreground">{category.name}</span>
         </div>
 
         {/* Category Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-4">{category.name}</h1>
+          <h1 className="text-4xl font-bold mb-4 text-foreground">{category.name}</h1>
           {category.description && (
-            <p className="text-lg text-gray-600">{category.description}</p>
+            <p className="text-lg text-muted-foreground">{category.description}</p>
           )}
           <div className="mt-4">
             <Badge variant="secondary">
@@ -78,7 +95,7 @@ const PublicCategory: React.FC = () => {
             {articles.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center">
-                  <p className="text-gray-600">
+                  <p className="text-muted-foreground">
                     No hay artículos en esta categoría aún.
                   </p>
                 </CardContent>
@@ -96,10 +113,10 @@ const PublicCategory: React.FC = () => {
                         />
                       )}
                       <CardHeader>
-                        <h2 className="text-2xl font-bold hover:text-blue-600 transition">
+                        <h2 className="text-2xl font-bold hover:text-primary transition text-foreground">
                           {article.title}
                         </h2>
-                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <div className="flex items-center gap-1">
                             <Calendar className="w-4 h-4" />
                             {new Date(article.publishedAt || article.createdAt).toLocaleDateString()}
@@ -113,7 +130,7 @@ const PublicCategory: React.FC = () => {
                         </div>
                       </CardHeader>
                       <CardContent>
-                        <p className="text-gray-700 line-clamp-3">{article.excerpt}</p>
+                        <p className="text-foreground line-clamp-3">{article.excerpt}</p>
                         {article.tags.length > 0 && (
                           <div className="flex flex-wrap gap-2 mt-4">
                             {article.tags.map(tag => (

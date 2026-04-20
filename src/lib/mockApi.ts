@@ -8,12 +8,15 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'USER' | 'REVIEWER' | 'COMMITTEE' | 'ADMIN';
+  role: 'USER' | 'REVIEWER' | 'COMMITTEE' | 'SUPERADMIN' | 'ADMIN_RECEPTIVO' | 'ADMIN_EMPRESA' | 'COORDINADOR_HOTEL' | 'LECTOR_RECEPTIVO' | 'LECTOR_EMPRESA';
   country: string;
   affiliation: string;
   createdAt: string;
   isActive: boolean;
   avatar?: string;
+  receptivoId?: string;
+  empresaId?: string;
+  hotelId?: string;
 }
 
 export interface Event {
@@ -58,7 +61,7 @@ export interface Review {
 }
 
 // Mock data store (simulating database)
-let mockUsers: User[] = [
+const mockUsers: User[] = [
   {
     id: '1',
     name: 'Dr. María García',
@@ -94,17 +97,74 @@ let mockUsers: User[] = [
   },
   {
     id: '4',
-    name: 'Admin Sistema',
-    email: 'admin@example.com',
-    role: 'ADMIN',
+    name: 'SuperAdmin Sistema',
+    email: 'superadmin@example.com',
+    role: 'SUPERADMIN',
     country: 'Cuba',
     affiliation: 'Sistema',
     createdAt: '2024-01-01',
     isActive: true,
   },
+  {
+    id: '5',
+    name: 'Admin Havanatur',
+    email: 'admin@havanatur.cu',
+    role: 'ADMIN_RECEPTIVO',
+    country: 'Cuba',
+    affiliation: 'Havanatur',
+    createdAt: '2024-01-01',
+    isActive: true,
+    receptivoId: 'nr1',
+  },
+  {
+    id: '6',
+    name: 'Admin Havanatur Varadero',
+    email: 'admin@havanatur-varadero.cu',
+    role: 'ADMIN_EMPRESA',
+    country: 'Cuba',
+    affiliation: 'Havanatur Sucursal Varadero',
+    createdAt: '2024-01-01',
+    isActive: true,
+    receptivoId: 'nr1',
+    empresaId: 'ne1',
+  },
+  {
+    id: '7',
+    name: 'Coord. Meliá Varadero',
+    email: 'coordinador@meliavaradero.cu',
+    role: 'COORDINADOR_HOTEL',
+    country: 'Cuba',
+    affiliation: 'Meliá Internacional',
+    createdAt: '2024-01-01',
+    isActive: true,
+    hotelId: 'nh1',
+  },
+  {
+    id: '8',
+    name: 'Lector Cubatur',
+    email: 'lector@cubatur.cu',
+    role: 'LECTOR_RECEPTIVO',
+    country: 'Cuba',
+    affiliation: 'Cubatur',
+    createdAt: '2024-01-01',
+    isActive: true,
+    receptivoId: 'nr2',
+  },
+  {
+    id: '9',
+    name: 'Lector Cubatur Events',
+    email: 'lector@cubatur-events.cu',
+    role: 'LECTOR_EMPRESA',
+    country: 'Cuba',
+    affiliation: 'Cubatur Events',
+    createdAt: '2024-01-01',
+    isActive: true,
+    receptivoId: 'nr2',
+    empresaId: 'ne3',
+  },
 ];
 
-let mockEvents: Event[] = [
+const mockEvents: Event[] = [
   {
     id: '1',
     name: 'Congreso Internacional de Biotecnología 2024',
@@ -133,7 +193,7 @@ let mockEvents: Event[] = [
   },
 ];
 
-let mockAbstracts: Abstract[] = [
+const mockAbstracts: Abstract[] = [
   {
     id: '1',
     userId: '1',
@@ -176,7 +236,7 @@ let mockAbstracts: Abstract[] = [
   },
 ];
 
-let mockReviews: Review[] = [
+const mockReviews: Review[] = [
   {
     id: '1',
     abstractId: '2',
@@ -381,7 +441,7 @@ export const statsApi = {
     events: number;
   }> {
     await delay(300);
-    const userAbstracts = role === 'ADMIN' || role === 'COMMITTEE' 
+    const userAbstracts = role === 'SUPERADMIN' || role === 'COMMITTEE' 
       ? mockAbstracts 
       : mockAbstracts.filter(a => a.userId === userId);
     

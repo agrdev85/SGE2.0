@@ -8,7 +8,7 @@ export function processHtmlLinks(html: string): string {
   // Expresión regular para encontrar enlaces
   const linkRegex = /<a\s+([^>]*?)href=["']([^"']+)["']([^>]*?)>/gi;
 
-  let processed = html.replace(linkRegex, (match, before, href, after) => {
+  const processed = html.replace(linkRegex, (match, before, href, after) => {
     // Detectar si es una URL interna (comienza con /) o interna (sin protocolo)
     const isInternal =
       href.startsWith('/') ||

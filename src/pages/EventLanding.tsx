@@ -300,7 +300,7 @@ export default function EventLanding() {
             >
               <Beaker className="h-5 w-5 text-white" />
             </div>
-            <span className="font-display font-bold text-xl">SciEvent</span>
+            <span className="font-display font-bold text-xl">SigEvent</span>
           </Link>
           <div className="flex items-center gap-3">
             <Button variant="ghost" asChild>
@@ -474,7 +474,7 @@ export default function EventLanding() {
                     <h3 className="text-xl font-bold mb-2">¿Necesitas ayuda?</h3>
                     <p className="text-white/80 text-sm mb-4">Contáctanos si tienes alguna duda</p>
                     <Button variant="secondary" asChild>
-                      <a href="mailto:info@scievent.com">Contactar</a>
+                      <a href="mailto:info@sigevent.com">Contactar</a>
                     </Button>
                   </CardContent>
                 </Card>
@@ -486,7 +486,7 @@ export default function EventLanding() {
       {/* Footer */}
       <footer className="py-8 border-t bg-background/50">
         <div className="container mx-auto px-4 text-center text-muted-foreground text-sm">
-          <p>© 2024 SciEvent. Sistema de Gestión de Eventos Científicos.</p>
+          <p>© 2024 SigEvent. Sistema de Gestión de Eventos.</p>
         </div>
       </footer>
     </div>

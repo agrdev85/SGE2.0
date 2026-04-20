@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
+import { useConfirmation } from '@/hooks/useConfirmation';
 import { db, Abstract, User, Thematic, WorkAssignment } from '@/lib/database';
 import { UserCog, Search, CheckCircle, AlertCircle, XCircle, Trash2 } from 'lucide-react';
 
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function JuryAssignmentManager({ eventId }: Props) {
+  const { success } = useConfirmation();
   const [abstracts, setAbstracts] = useState<Abstract[]>([]);
   const [reviewers, setReviewers] = useState<User[]>([]);
   const [thematics, setThematics] = useState<Thematic[]>([]);
@@ -59,6 +61,7 @@ export function JuryAssignmentManager({ eventId }: Props) {
       });
       
       toast.success('Trabajo asignado correctamente');
+      success({ title: '¡Guardado!', description: 'Trabajo asignado correctamente' });
       setShowAssignDialog(false);
       setSelectedAbstract(null);
       setSelectedReviewer('');
@@ -73,6 +76,7 @@ export function JuryAssignmentManager({ eventId }: Props) {
     if (assignment) {
       db.workAssignments.delete(assignment.id);
       toast.success('Asignación eliminada');
+      success({ title: '¡Eliminado!', description: 'Asignación eliminada correctamente' });
       loadData();
     }
   };

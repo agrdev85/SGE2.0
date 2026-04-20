@@ -14,6 +14,23 @@ const PublicArticle: React.FC = () => {
   const [category, setCategory] = useState<CMSCategory | null>(null);
   const [relatedArticles, setRelatedArticles] = useState<CMSArticle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setIsDark(mediaQuery.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDark]);
 
   useEffect(() => {
     if (slug) {
@@ -39,10 +56,10 @@ const PublicArticle: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Cargando...</p>
         </div>
       </div>
     );
@@ -50,10 +67,10 @@ const PublicArticle: React.FC = () => {
 
   if (!article) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Artículo no encontrado</h1>
-          <p className="text-gray-600 mb-6">El artículo que buscas no existe o no está publicado.</p>
+          <h1 className="text-4xl font-bold text-foreground mb-4">Artículo no encontrado</h1>
+          <p className="text-muted-foreground mb-6">El artículo que buscas no existe o no está publicado.</p>
           <Button onClick={() => navigate('/blog')}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Ver todos los artículos
@@ -64,9 +81,9 @@ const PublicArticle: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-white border-b">
+      <header className="bg-card border-b">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <Button
             variant="ghost"
@@ -88,15 +105,15 @@ const PublicArticle: React.FC = () => {
             )}
           </div>
 
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+          <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
             {article.title}
           </h1>
 
           {article.excerpt && (
-            <p className="text-xl text-gray-600 mb-6">{article.excerpt}</p>
+            <p className="text-xl text-muted-foreground mb-6">{article.excerpt}</p>
           )}
 
-          <div className="flex items-center gap-6 text-sm text-gray-600">
+          <div className="flex items-center gap-6 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4" />
               {new Date(article.publishedAt || article.createdAt).toLocaleDateString('es-ES', {
@@ -128,9 +145,9 @@ const PublicArticle: React.FC = () => {
       <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow-sm p-8">
+            <div className="bg-card rounded-lg shadow-sm p-8">
               <article
-                className="prose prose-lg max-w-none"
+                className="prose prose-lg max-w-none text-foreground dark:prose-invert"
                 dangerouslySetInnerHTML={{ __html: article.content }}
               />
 
@@ -138,10 +155,10 @@ const PublicArticle: React.FC = () => {
               {article.tags.length > 0 && (
                 <div className="mt-8 pt-8 border-t">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Tag className="w-4 h-4 text-gray-600" />
+                    <Tag className="w-4 h-4 text-muted-foreground" />
                     {article.tags.map(tag => (
                       <Link key={tag} to={`/tag/${tag}`}>
-                        <Badge variant="outline" className="cursor-pointer hover:bg-gray-100">
+                        <Badge variant="outline" className="cursor-pointer hover:bg-muted">
                           {tag}
                         </Badge>
                       </Link>

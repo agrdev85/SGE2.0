@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, CMSMenu, CMSMenuItem, CMSPage, CMSArticle, CMSCategory } from '@/lib/database';
+import { normalizeText, isDuplicate, findSimilarItems } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,9 +16,12 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import { 
   Plus, 
   Edit2, 
@@ -27,9 +31,11 @@ import {
   Menu as MenuIcon,
   Link2,
   ChevronRight,
-  GripVertical
+  GripVertical,
+  Lightbulb
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 
 const CMSMenuManager: React.FC = () => {
   const [menus, setMenus] = useState<CMSMenu[]>([]);
@@ -39,6 +45,30 @@ const CMSMenuManager: React.FC = () => {
   const [currentMenuItem, setCurrentMenuItem] = useState<Partial<CMSMenuItem> | null>(null);
   const [newMenuName, setNewMenuName] = useState('');
   const [newMenuLocation, setNewMenuLocation] = useState<CMSMenu['location']>('header');
+  const [suggestionDialog, setSuggestionDialog] = useState<{
+    isOpen: boolean;
+    newValue: string;
+    suggestions: CMSMenu[];
+    onSelectExisting: () => void;
+    onCreateAnyway: () => void;
+  }>({
+    isOpen: false,
+    newValue: '',
+    suggestions: [],
+    onSelectExisting: () => {},
+    onCreateAnyway: () => {},
+  });
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
+    isOpen: boolean;
+    itemName: string;
+    itemType: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    itemName: '',
+    itemType: '',
+    onConfirm: () => {},
+  });
   
   const [pages, setPages] = useState<CMSPage[]>([]);
   const [articles, setArticles] = useState<CMSArticle[]>([]);
@@ -61,6 +91,31 @@ const CMSMenuManager: React.FC = () => {
       return;
     }
 
+    const existe = isDuplicate(menus, newMenuName, m => m.name);
+    if (existe) {
+      toast.error(`Ya existe un menú con el nombre "${existe.name}"`);
+      return;
+    }
+
+    const similares = findSimilarItems(menus, newMenuName, m => m.name, 0.5);
+    if (similares.length > 0) {
+      setSuggestionDialog({
+        isOpen: true,
+        newValue: newMenuName,
+        suggestions: similares.map(s => s.item),
+        onSelectExisting: () => setSuggestionDialog(prev => ({ ...prev, isOpen: false })),
+        onCreateAnyway: () => {
+          guardarMenu();
+          setSuggestionDialog(prev => ({ ...prev, isOpen: false }));
+        },
+      });
+      return;
+    }
+
+    guardarMenu();
+  };
+
+  const guardarMenu = () => {
     const newMenu = db.cmsMenus.create({
       name: newMenuName,
       location: newMenuLocation,
@@ -73,16 +128,23 @@ const CMSMenuManager: React.FC = () => {
     setIsMenuDialogOpen(false);
     loadData();
     setSelectedMenu(newMenu);
+    toast.success('Menú creado');
   };
 
-  const handleDeleteMenu = (id: string) => {
-    if (confirm('¿Estás seguro de eliminar este menú?')) {
-      db.cmsMenus.delete(id);
-      if (selectedMenu?.id === id) {
-        setSelectedMenu(null);
-      }
-      loadData();
-    }
+  const handleDeleteMenu = (menu: CMSMenu) => {
+    setDeleteConfirmDialog({
+      isOpen: true,
+      itemName: menu.name,
+      itemType: 'menú',
+      onConfirm: () => {
+        db.cmsMenus.delete(menu.id);
+        if (selectedMenu?.id === menu.id) {
+          setSelectedMenu(null);
+        }
+        loadData();
+        toast.success('Menú eliminado');
+      },
+    });
   };
 
   const handleAddMenuItem = () => {
@@ -123,7 +185,7 @@ const CMSMenuManager: React.FC = () => {
       icon: currentMenuItem.icon,
     };
 
-    let updatedItems = [...selectedMenu.items];
+    const updatedItems = [...selectedMenu.items];
     
     if (currentMenuItem.id) {
       // Update existing item
@@ -146,17 +208,23 @@ const CMSMenuManager: React.FC = () => {
     loadData();
   };
 
-  const handleDeleteMenuItem = (itemId: string) => {
+  const handleDeleteMenuItem = (item: CMSMenuItem) => {
     if (!selectedMenu) return;
     
-    if (confirm('¿Eliminar este elemento del menú?')) {
-      const updatedItems = selectedMenu.items.filter(i => i.id !== itemId && i.parentId !== itemId);
-      db.cmsMenus.update(selectedMenu.id, { items: updatedItems });
-      
-      const updated = db.cmsMenus.getById(selectedMenu.id);
-      setSelectedMenu(updated || null);
-      loadData();
-    }
+    setDeleteConfirmDialog({
+      isOpen: true,
+      itemName: item.label,
+      itemType: 'elemento del menú',
+      onConfirm: () => {
+        const updatedItems = selectedMenu.items.filter(i => i.id !== item.id && i.parentId !== item.id);
+        db.cmsMenus.update(selectedMenu.id, { items: updatedItems });
+        
+        const updated = db.cmsMenus.getById(selectedMenu.id);
+        setSelectedMenu(updated || null);
+        loadData();
+        toast.success('Elemento eliminado');
+      },
+    });
   };
 
   const moveMenuItem = (itemId: string, direction: 'up' | 'down') => {
@@ -253,7 +321,7 @@ const CMSMenuManager: React.FC = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleDeleteMenuItem(item.id)}
+                onClick={() => handleDeleteMenuItem(item)}
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
@@ -314,7 +382,7 @@ const CMSMenuManager: React.FC = () => {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteMenu(menu.id);
+                        handleDeleteMenu(menu);
                       }}
                     >
                       <Trash2 className="w-4 h-4" />
@@ -593,6 +661,67 @@ const CMSMenuManager: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={suggestionDialog.isOpen} onOpenChange={(open) => !open && setSuggestionDialog(prev => ({ ...prev, isOpen: false }))}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lightbulb className="w-5 h-5 text-yellow-500" />
+              ¿Quiso decir...?
+            </DialogTitle>
+            <DialogDescription>
+              Encontramos menús similares con nombre "{suggestionDialog.newValue}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-60 overflow-y-auto">
+            {suggestionDialog.suggestions.map((menu) => (
+              <div 
+                key={menu.id} 
+                className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => suggestionDialog.onSelectExisting()}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{menu.name}</p>
+                    <p className="text-sm text-muted-foreground">Ubicación: {menu.location}</p>
+                  </div>
+                  <Badge variant="outline">Seleccionar</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => suggestionDialog.onCreateAnyway()}
+              className="w-full sm:w-auto"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Crear "{suggestionDialog.newValue}"
+            </Button>
+            <Button 
+              variant="ghost" 
+              onClick={() => setSuggestionDialog(prev => ({ ...prev, isOpen: false }))}
+              className="w-full sm:w-auto"
+            >
+              Cancelar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmationDialog
+        open={deleteConfirmDialog.isOpen}
+        onOpenChange={(open) => !open && setDeleteConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        title={`¿Eliminar ${deleteConfirmDialog.itemType}?`}
+        description={`¿Está seguro de que desea eliminar este ${deleteConfirmDialog.itemType}? Esta acción no se puede deshacer.`}
+        itemName={deleteConfirmDialog.itemName}
+        itemType={deleteConfirmDialog.itemType}
+        variant="danger"
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        onConfirm={deleteConfirmDialog.onConfirm}
+      />
     </div>
   );
 };

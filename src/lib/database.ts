@@ -3,13 +3,24 @@
 
 import { toast } from "sonner";
 
+export const STORAGE_PREFIX = 'sge_';
+
+export function broadcastDataChange(collection: string) {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(`${STORAGE_PREFIX}last_change_${collection}`, Date.now().toString());
+    window.dispatchEvent(new CustomEvent('sge-data-change', { detail: { collection } }));
+  }
+}
+
 // Types
+export type UserRole = 'USER' | 'REVIEWER' | 'COMMITTEE' | 'SUPERADMIN' | 'ADMIN_RECEPTIVO' | 'ADMIN_EMPRESA' | 'COORDINADOR_HOTEL' | 'LECTOR_RECEPTIVO' | 'LECTOR_EMPRESA';
+
 export interface User {
   id: string;
   name: string;
   email: string;
   passwordHash?: string;
-  role: 'USER' | 'REVIEWER' | 'COMMITTEE' | 'ADMIN';
+  role: UserRole;
   country: string;
   affiliation: string;
   createdAt: string;
@@ -24,8 +35,114 @@ export interface User {
   educationalLevel?: string;
   gender?: string;
   specialization?: string;
-  reviewerThematics?: string[]; // Temáticas que puede revisar
-  isParticipant?: boolean; // Indica si también es participante registrado
+  reviewerThematics?: string[];
+  isParticipant?: boolean;
+  // Isolation fields
+  receptivoId?: string;
+  empresaId?: string;
+  hotelId?: string;
+}
+
+// ===== NOMENCLADOR TYPES =====
+
+export interface NomReceptivo {
+  id: string;
+  siglas: string;
+  nombre: string;
+  paisId?: string;
+  contactoEmail: string;
+  contactoTelefono: string;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NomEmpresa {
+  id: string;
+  receptivoId: string;
+  codigo: string;
+  nombre: string;
+  nitRfc: string;
+  contactoPrincipal: string;
+  contactoEmail: string;
+  contactoTelefono: string;
+  direccion: string;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NomTipoParticipacion {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  requierePago: boolean;
+  apareceEnListadoPublico: boolean;
+  activo: boolean;
+}
+
+export interface NomTipoTransporte {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  capacidadMin: number;
+  capacidadMax: number;
+  requiereChofer: boolean;
+  requiereLicenciaEspecial: boolean;
+  costoPorPersona: boolean;
+  activo: boolean;
+}
+
+export interface NomHotel {
+  id: string;
+  nombre: string;
+  cadenaHotelera: string;
+  categoriaEstrellas: number;
+  ciudad: string;
+  direccion: string;
+  telefono: string;
+  email: string;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NomTipoHabitacion {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  capacidadMaxPersonas: number;
+  activo: boolean;
+}
+
+export interface HotelTipoHabitacion {
+  id: string;
+  hotelId: string;
+  tipoHabitacionId: string;
+  precioConDesayuno: number;
+  precioConTodoIncluido: number;
+  activo: boolean;
+}
+
+export interface EventoHotel {
+  id: string;
+  eventoId: string; // macroEventId
+  hotelId: string;
+  fechaCheckin: string;
+  fechaCheckout: string;
+  precioOverride?: Record<string, { conDesayuno: number; todoIncluido: number }>;
+}
+
+// Audit Log
+export interface AuditLog {
+  id: string;
+  userId: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  details: string;
+  timestamp: string;
+  impersonatedBy?: string;
 }
 
 // Macro Event - Container for simple events
@@ -44,6 +161,17 @@ export interface MacroEvent {
   secondaryColor?: string;
   backgroundColor?: string;
   registrationFields?: FormField[];
+  receptivoId?: string; // FK to NomReceptivo - data isolation
+  empresaId?: string; // FK to NomEmpresa - data isolation
+  urlEvento?: string; // URL pública del evento
+  modoCargaTrabajos?: 'TEMATICA' | 'SUBEVENTO'; // Modo de carga de trabajos
+  tituloPublico?: string;
+  contenidoHtml?: string;
+  monedaPrincipal?: Moneda;
+  tasasCambio?: TasasCambio;
+  estadoConfiguracion?: EstadoConfiguracionEvento;
+  pasoActual?: number;
+  programaSocial?: string[];
   isActive: boolean;
   createdAt: string;
 }
@@ -146,6 +274,192 @@ export interface Thematic {
   createdAt: string;
 }
 
+// ===== NEW TYPES FOR WIZARD & SALONES =====
+
+export type Moneda = 'CUP' | 'USD' | 'EUR';
+
+export type EstadoConfiguracionEvento = 'BORRADOR' | 'CONFIGURACION' | 'PUBLICADO';
+
+export interface TasasCambio {
+  USD: number;
+  EUR: number;
+}
+
+// Salon - Conference rooms per hotel (renombrado de HostSalon)
+export interface Salon {
+  id: string;
+  hotelId: string;
+  codigo: string;
+  nombre: string;
+  ubicacion: string;
+  capacidadMaxima: number;
+  estado: 'ACTIVO' | 'INACTIVO';
+  imagenes: string[]; // Array de imágenes en base64
+  createdAt: string;
+  updatedAt: string;
+}
+
+// SubEvento - Antes llamado Event Simple
+export interface SubEvento {
+  id: string;
+  eventoId: string; // FK a MacroEvent/Evento
+  nombre: string;
+  nombreEn?: string;
+  tipo: 'SIMPOSIO' | 'CURSO' | 'WORKSHOP' | 'PONENCIA';
+  descripcion: string;
+  tematicaIds: string[]; // Array de IDs de temáticas - una temática solo puede estar en un subevento
+  salonId?: string;
+  fecha?: string;
+  horaInicio?: string;
+  horaFin?: string;
+  capacidad: number;
+  precio: {
+    CUP: number;
+    moneda: number;
+    monedaSeleccionada: Moneda;
+  };
+  isActive: boolean;
+  createdAt: string;
+}
+
+// ActividadSocial - Excursiones y actividades del programa social
+export interface ActividadSocial {
+  id: string;
+  eventoId: string;
+  nombre: string;
+  descripcion: string;
+  fecha: string;
+  horaInicio: string;
+  horaFin: string;
+  puntoEncuentro: string;
+  horaEncuentro: string;
+  destino: string;
+  direccionExacta: string;
+  esGratuita: boolean;
+  costo: {
+    CUP: number;
+    moneda: number;
+    monedaSeleccionada: Moneda;
+  };
+  cupoMaximo: number;
+  cupoMinimo: number;
+  fechaLimiteReserva: string;
+  requiereTransporte: boolean;
+  tipoVehiculo?: string;
+  guiaIncluido: boolean;
+  idiomaGuia?: string[];
+  imagenes: string[];
+  estado: 'ACTIVO' | 'INACTIVO';
+  createdAt: string;
+}
+
+// ReservaActividadSocial - Reservas de actividades sociales
+export interface ReservaActividadSocial {
+  id: string;
+  actividadId: string;
+  usuarioId: string;
+  estadoPago: 'COMPLETADO' | 'PENDIENTE' | 'PARCIAL';
+  montoPagado: number;
+  fechaReserva: string;
+  fechaPago?: string;
+}
+
+// EventoHotelHabitacion - Precios de habitación por evento
+export interface EventoHotelHabitacion {
+  id: string;
+  eventoHotelId: string;
+  tipoHabitacionId: string;
+  precioCUP: number;
+  precioMoneda: number;
+  moneda: Moneda;
+  cupo: number;
+}
+
+// EventoSalon - Salones asignados a un evento
+export interface EventoSalon {
+  id: string;
+  eventoId: string;
+  salonId: string;
+  disponible: boolean;
+}
+
+// EventoTipoParticipacion - Tipos de participación configurados por evento
+export interface EventoTipoParticipacion {
+  id: string;
+  eventoId: string;
+  tipoParticipacionId: string;
+  precioCUP: number;
+  precioMoneda: number;
+  moneda: Moneda;
+  capacidad: number;
+  apareceEnListadoPublico: boolean;
+}
+
+// RutaTransporte - Rutas de transporte configuradas
+export interface RutaTransporte {
+  id: string;
+  eventoId: string;
+  nombre: string;
+  origen: string;
+  destino: string;
+  tipoVehiculoId: string;
+  precio: {
+    CUP: number;
+    moneda: number;
+    monedaSeleccionada: Moneda;
+  };
+  activo: boolean;
+  createdAt: string;
+}
+
+// ReservaTransporte - Reservas de transporte
+export interface ReservaTransporte {
+  id: string;
+  rutaId: string;
+  usuarioId: string;
+  fecha: string;
+  cantidadPersonas: number;
+  estado: 'PENDIENTE' | 'CONFIRMADO' | 'CANCELADO';
+  createdAt: string;
+}
+
+// Nomencladores específicos del evento (Paso 8 del wizard)
+export type TipoNomencladorEvento = 'TEMATICA' | 'AREA_TEMATICA' | 'CATEGORIA_SESION' | 'TIPO_ACTIVIDAD';
+
+export interface NomencladorEvento {
+  id: string;
+  eventoId: string;
+  tipo: TipoNomencladorEvento;
+  nombre: string;
+  descripcion?: string;
+  duracion?: number; // Para temáticas
+  color?: string; // Para áreas temáticas
+  tipoSesion?: 'CONFERENCIA' | 'SESION_ORAL' | 'POSTER' | 'PLENARIA' | 'BREAK' | 'WORKSHOP'; // Para categorías de sesión
+  incluyeTransporte?: boolean; // Para tipos de actividad
+  incluyeComida?: boolean; // Para tipos de actividad
+  activo: boolean;
+  createdAt: string;
+}
+
+// WizardProgress - Seguimiento del progreso del wizard
+export interface WizardProgress {
+  eventoId: string;
+  pasoActual: number;
+  pasosCompletados: number[];
+  ultimaModificacion: string;
+  modificadoPor: string;
+}
+
+// Extend MacroEvent with new fields
+export interface MacroEvent {
+  // ... existing fields
+  monedaPrincipal?: Moneda;
+  tasasCambio?: TasasCambio;
+  estadoConfiguracion?: EstadoConfiguracionEvento;
+  pasoActual?: number;
+  programaSocial?: string[]; // IDs de actividades sociales
+}
+
 export interface WorkAssignment {
   id: string;
   abstractId: string;
@@ -226,6 +540,7 @@ export interface EmailTemplate {
   subject: string;
   htmlBody: string;
   name?: string;
+  autoTrigger?: 'ON_INSCRIPTION' | 'ON_ABSTRACT_SUBMIT' | 'ON_ABSTRACT_APPROVED' | 'ON_ABSTRACT_REJECTED' | 'ON_ABSTRACT_REVISION' | 'ON_CERTIFICATE_READY';
 }
 
 export interface SentEmail {
@@ -389,6 +704,7 @@ class Database {
 
   private setCollection<T>(key: string, data: T[]): void {
     localStorage.setItem(`db_${key}`, JSON.stringify(data));
+    broadcastDataChange(key);
   }
 
   private generateId(): string {
@@ -400,6 +716,119 @@ class Database {
     if (this.getCollection<User>('users').length === 0) {
       this.seedData();
     }
+    if (this.getCollection<NomReceptivo>('nomencladores_receptivos').length === 0) {
+      this.seedNomencladores();
+    }
+  }
+
+  private seedNomencladores() {
+    const now = new Date().toISOString();
+
+    // Seed Receptivos
+    const receptivos: NomReceptivo[] = [
+      { id: 'nr1', siglas: 'HAV', nombre: 'Havanatur', contactoEmail: 'eventos@havanatur.cu', contactoTelefono: '+53 7 8341234', activo: true, createdAt: now, updatedAt: now },
+      { id: 'nr2', siglas: 'CUB', nombre: 'Cubatur', contactoEmail: 'eventos@cubatur.cu', contactoTelefono: '+53 7 8345678', activo: true, createdAt: now, updatedAt: now },
+      { id: 'nr3', siglas: 'GAV', nombre: 'Gaviota Tours', contactoEmail: 'info@gaviota.cu', contactoTelefono: '+53 7 8349999', activo: true, createdAt: now, updatedAt: now },
+    ];
+    this.setCollection('nomencladores_receptivos', receptivos);
+
+    // Seed Empresas
+    const empresas: NomEmpresa[] = [
+      { id: 'ne1', receptivoId: 'nr1', codigo: 'HAV-001', nombre: 'Havanatur Sucursal Varadero', nitRfc: 'CU1234567', contactoPrincipal: 'Carlos Pérez', contactoEmail: 'varadero@havanatur.cu', contactoTelefono: '+53 45 123456', direccion: 'Varadero, Cuba', activo: true, createdAt: now, updatedAt: now },
+      { id: 'ne2', receptivoId: 'nr1', codigo: 'HAV-002', nombre: 'Havanatur Convenciones', nitRfc: 'CU1234568', contactoPrincipal: 'Ana López', contactoEmail: 'conv@havanatur.cu', contactoTelefono: '+53 7 8341235', direccion: 'La Habana, Cuba', activo: true, createdAt: now, updatedAt: now },
+      { id: 'ne3', receptivoId: 'nr2', codigo: 'CUB-001', nombre: 'Cubatur Events', nitRfc: 'CU2345678', contactoPrincipal: 'María Rodríguez', contactoEmail: 'events@cubatur.cu', contactoTelefono: '+53 7 8345679', direccion: 'La Habana, Cuba', activo: true, createdAt: now, updatedAt: now },
+    ];
+    this.setCollection('nomencladores_empresas', empresas);
+
+    // Seed Tipos de Participación
+    const tiposParticipacion: NomTipoParticipacion[] = [
+      { id: 'tp1', nombre: 'ASISTENTE', descripcion: 'Participante regular del evento', requierePago: true, apareceEnListadoPublico: false, activo: true },
+      { id: 'tp2', nombre: 'PONENTE', descripcion: 'Presenta trabajo oral', requierePago: false, apareceEnListadoPublico: true, activo: true },
+      { id: 'tp3', nombre: 'POSTER', descripcion: 'Presenta póster científico', requierePago: true, apareceEnListadoPublico: true, activo: true },
+      { id: 'tp4', nombre: 'INVITADO', descripcion: 'Invitado especial, sin pago', requierePago: false, apareceEnListadoPublico: true, activo: true },
+      { id: 'tp5', nombre: 'ORGANIZADOR', descripcion: 'Miembro del comité organizador', requierePago: false, apareceEnListadoPublico: false, activo: true },
+    ];
+    this.setCollection('nomencladores_tiposParticipacion', tiposParticipacion);
+
+    // Seed Tipos de Transporte
+    const tiposTransporte: NomTipoTransporte[] = [
+      { id: 'tt1', nombre: 'Autobús', descripcion: 'Transporte colectivo grande', capacidadMin: 30, capacidadMax: 55, requiereChofer: true, requiereLicenciaEspecial: true, costoPorPersona: true, activo: true },
+      { id: 'tt2', nombre: 'Minivan', descripcion: 'Vehículo mediano', capacidadMin: 8, capacidadMax: 15, requiereChofer: true, requiereLicenciaEspecial: false, costoPorPersona: false, activo: true },
+      { id: 'tt3', nombre: 'Taxi', descripcion: 'Vehículo individual', capacidadMin: 1, capacidadMax: 4, requiereChofer: true, requiereLicenciaEspecial: false, costoPorPersona: false, activo: true },
+      { id: 'tt4', nombre: 'Transfer VIP', descripcion: 'Transporte ejecutivo', capacidadMin: 1, capacidadMax: 6, requiereChofer: true, requiereLicenciaEspecial: false, costoPorPersona: false, activo: true },
+    ];
+    this.setCollection('nomencladores_tiposTransporte', tiposTransporte);
+
+    // Seed Hoteles
+    const hoteles: NomHotel[] = [
+      { id: 'nh1', nombre: 'Meliá Internacional Varadero', cadenaHotelera: 'Meliá Hotels', categoriaEstrellas: 5, ciudad: 'Varadero', direccion: 'Autopista Sur, Varadero', telefono: '+53 45 123456', email: 'eventos@meliavaradero.cu', activo: true, createdAt: now, updatedAt: now },
+      { id: 'nh2', nombre: 'Hotel Nacional de Cuba', cadenaHotelera: 'Gran Caribe', categoriaEstrellas: 5, ciudad: 'La Habana', direccion: 'Calle O esquina 21, Vedado', telefono: '+53 7 8361564', email: 'eventos@hotelnacional.cu', activo: true, createdAt: now, updatedAt: now },
+      { id: 'nh3', nombre: 'Iberostar Bella Vista', cadenaHotelera: 'Iberostar', categoriaEstrellas: 4, ciudad: 'Varadero', direccion: 'Carretera de las Américas', telefono: '+53 45 667890', email: 'eventos@iberostar.cu', activo: true, createdAt: now, updatedAt: now },
+    ];
+    this.setCollection('nomencladores_hoteles', hoteles);
+
+    // Seed Tipos de Habitación
+    const tiposHabitacion: NomTipoHabitacion[] = [
+      { id: 'th1', nombre: 'Estándar', descripcion: 'Habitación estándar con cama doble', capacidadMaxPersonas: 2, activo: true },
+      { id: 'th2', nombre: 'Suite', descripcion: 'Suite con sala y dormitorio separados', capacidadMaxPersonas: 3, activo: true },
+      { id: 'th3', nombre: 'Doble', descripcion: 'Habitación con dos camas individuales', capacidadMaxPersonas: 2, activo: true },
+      { id: 'th4', nombre: 'Triple', descripcion: 'Habitación para tres personas', capacidadMaxPersonas: 3, activo: true },
+      { id: 'th5', nombre: 'Suite Premium', descripcion: 'Suite de lujo con vista al mar', capacidadMaxPersonas: 4, activo: true },
+    ];
+    this.setCollection('nomencladores_tiposHabitacion', tiposHabitacion);
+
+    // Seed Hotel-TipoHabitacion relationships
+    const hotelTiposHab: HotelTipoHabitacion[] = [
+      { id: 'hth1', hotelId: 'nh1', tipoHabitacionId: 'th1', precioConDesayuno: 120, precioConTodoIncluido: 180, activo: true },
+      { id: 'hth2', hotelId: 'nh1', tipoHabitacionId: 'th2', precioConDesayuno: 250, precioConTodoIncluido: 350, activo: true },
+      { id: 'hth3', hotelId: 'nh1', tipoHabitacionId: 'th3', precioConDesayuno: 100, precioConTodoIncluido: 160, activo: true },
+      { id: 'hth4', hotelId: 'nh2', tipoHabitacionId: 'th1', precioConDesayuno: 150, precioConTodoIncluido: 200, activo: true },
+      { id: 'hth5', hotelId: 'nh2', tipoHabitacionId: 'th5', precioConDesayuno: 400, precioConTodoIncluido: 500, activo: true },
+    ];
+    this.setCollection('nomencladores_hotelTiposHabitacion', hotelTiposHab);
+
+    // Seed Audit Log
+    this.setCollection('auditLog', []);
+
+    // Seed EventoHotel
+    this.setCollection('nomencladores_eventoHotel', []);
+
+    // Seed new collections
+    this.setCollection('salones', [
+      { id: 'sal1', hotelId: 'nh1', codigo: 'SAL-CONV-001', nombre: 'Salón de Convenciones', ubicacion: 'Piso 1', capacidadMaxima: 500, estado: 'ACTIVO', imagenes: [], createdAt: now, updatedAt: now },
+      { id: 'sal2', hotelId: 'nh1', codigo: 'SAL-SEMI-001', nombre: 'Sala de Seminarios A', ubicacion: 'Piso 2', capacidadMaxima: 100, estado: 'ACTIVO', imagenes: [], createdAt: now, updatedAt: now },
+      { id: 'sal3', hotelId: 'nh1', codigo: 'SAL-SEMI-002', nombre: 'Sala de Seminarios B', ubicacion: 'Piso 2', capacidadMaxima: 100, estado: 'ACTIVO', imagenes: [], createdAt: now, updatedAt: now },
+      { id: 'sal4', hotelId: 'nh2', codigo: 'SAL-GRAN-001', nombre: 'Gran Salon', ubicacion: 'Piso Lobby', capacidadMaxima: 800, estado: 'ACTIVO', imagenes: [], createdAt: now, updatedAt: now },
+      { id: 'sal5', hotelId: 'nh2', codigo: 'SAL-SALA-001', nombre: 'Salón de Recepciones', ubicacion: 'Piso 3', capacidadMaxima: 300, estado: 'ACTIVO', imagenes: [], createdAt: now, updatedAt: now },
+    ]);
+
+    this.setCollection('subEventos', []);
+    this.setCollection('actividadesSociales', []);
+    this.setCollection('reservasActividades', []);
+    this.setCollection('eventoSalones', []);
+    this.setCollection('eventoTiposParticipacion', []);
+    this.setCollection('rutasTransporte', []);
+    this.setCollection('nomencladoresEvento', []);
+    this.setCollection('wizardProgress', []);
+
+    // Ensure all demo users exist (in case of stale localStorage)
+    const users = this.getCollection<User>('users');
+    const requiredUsers = [
+      { id: 'superadmin1', email: 'superadmin@example.com', name: 'SuperAdmin', role: 'SUPERADMIN' as UserRole, affiliation: 'Sistema' },
+      { id: 'admin_rec1', email: 'admin@havanatur.cu', name: 'Admin Havanatur', role: 'ADMIN_RECEPTIVO' as UserRole, affiliation: 'Havanatur', receptivoId: 'nr1' },
+      { id: 'admin_emp1', email: 'admin@havanatur-varadero.cu', name: 'Admin Havanatur Varadero', role: 'ADMIN_EMPRESA' as UserRole, affiliation: 'Havanatur Sucursal Varadero', receptivoId: 'nr1', empresaId: 'ne1' },
+      { id: 'coord_hotel1', email: 'coordinador@meliavaradero.cu', name: 'Coord. Meliá Varadero', role: 'COORDINADOR_HOTEL' as UserRole, affiliation: 'Meliá Internacional', hotelId: 'nh1' },
+      { id: 'lector_rec1', email: 'lector@cubatur.cu', name: 'Lector Cubatur', role: 'LECTOR_RECEPTIVO' as UserRole, affiliation: 'Cubatur', receptivoId: 'nr2' },
+      { id: 'lector_emp1', email: 'lector@cubatur-events.cu', name: 'Lector Cubatur Events', role: 'LECTOR_EMPRESA' as UserRole, affiliation: 'Cubatur Events', receptivoId: 'nr2', empresaId: 'ne3' },
+    ];
+    let changed = false;
+    for (const req of requiredUsers) {
+      if (!users.some(u => u.email === req.email)) {
+        users.push({ ...req, passwordHash: 'demo', country: 'Cuba', createdAt: '2024-01-01', isActive: true });
+        changed = true;
+      }
+    }
+    if (changed) this.setCollection('users', users);
   }
 
   private seedData() {
@@ -444,17 +873,7 @@ class Database {
         avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop',
         specialization: 'Farmacología',
       },
-      {
-        id: '4',
-        name: 'Admin Sistema',
-        email: 'admin@example.com',
-        passwordHash: 'demo',
-        role: 'ADMIN',
-        country: 'Cuba',
-        affiliation: 'Sistema',
-        createdAt: '2024-01-01',
-        isActive: true,
-      },
+      // ADMIN role removed - use SUPERADMIN instead
       {
         id: '5',
         name: 'Dr. Pedro López',
@@ -478,6 +897,79 @@ class Database {
         createdAt: '2024-01-14',
         isActive: true,
         specialization: 'Inmunología',
+      },
+      {
+        id: 'superadmin1',
+        name: 'SuperAdmin',
+        email: 'superadmin@example.com',
+        passwordHash: 'demo',
+        role: 'SUPERADMIN',
+        country: 'Cuba',
+        affiliation: 'Sistema',
+        createdAt: '2024-01-01',
+        isActive: true,
+      },
+      {
+        id: 'admin_rec1',
+        name: 'Admin Havanatur',
+        email: 'admin@havanatur.cu',
+        passwordHash: 'demo',
+        role: 'ADMIN_RECEPTIVO',
+        country: 'Cuba',
+        affiliation: 'Havanatur',
+        createdAt: '2024-01-01',
+        isActive: true,
+        receptivoId: 'nr1',
+      },
+      {
+        id: 'coord_hotel1',
+        name: 'Coord. Meliá Varadero',
+        email: 'coordinador@meliavaradero.cu',
+        passwordHash: 'demo',
+        role: 'COORDINADOR_HOTEL',
+        country: 'Cuba',
+        affiliation: 'Meliá Internacional',
+        createdAt: '2024-01-01',
+        isActive: true,
+        hotelId: 'nh1',
+      },
+      {
+        id: 'admin_emp1',
+        name: 'Admin Havanatur Varadero',
+        email: 'admin@havanatur-varadero.cu',
+        passwordHash: 'demo',
+        role: 'ADMIN_EMPRESA',
+        country: 'Cuba',
+        affiliation: 'Havanatur Sucursal Varadero',
+        createdAt: '2024-01-01',
+        isActive: true,
+        receptivoId: 'nr1',
+        empresaId: 'ne1',
+      },
+      {
+        id: 'lector_rec1',
+        name: 'Lector Cubatur',
+        email: 'lector@cubatur.cu',
+        passwordHash: 'demo',
+        role: 'LECTOR_RECEPTIVO',
+        country: 'Cuba',
+        affiliation: 'Cubatur',
+        createdAt: '2024-01-01',
+        isActive: true,
+        receptivoId: 'nr2',
+      },
+      {
+        id: 'lector_emp1',
+        name: 'Lector Cubatur Events',
+        email: 'lector@cubatur-events.cu',
+        passwordHash: 'demo',
+        role: 'LECTOR_EMPRESA',
+        country: 'Cuba',
+        affiliation: 'Cubatur Events',
+        createdAt: '2024-01-01',
+        isActive: true,
+        receptivoId: 'nr2',
+        empresaId: 'ne3',
       },
     ];
     this.setCollection('users', users);
@@ -2077,6 +2569,570 @@ class Database {
       toast.success('Configuración actualizada');
       return settings[0];
     },
+  };
+
+  // ===== NOMENCLADORES CRUD =====
+
+  nomReceptivos = {
+    getAll: (): NomReceptivo[] => this.getCollection<NomReceptivo>('nomencladores_receptivos'),
+    getById: (id: string): NomReceptivo | undefined => this.getCollection<NomReceptivo>('nomencladores_receptivos').find(r => r.id === id),
+    getActivos: (): NomReceptivo[] => this.getCollection<NomReceptivo>('nomencladores_receptivos').filter(r => r.activo),
+    create: (data: Omit<NomReceptivo, 'id' | 'createdAt' | 'updatedAt'>): NomReceptivo => {
+      const items = this.getCollection<NomReceptivo>('nomencladores_receptivos');
+      if (items.some(r => r.siglas === data.siglas)) throw new Error('Las siglas ya están en uso (RB-NOM-01)');
+      const item: NomReceptivo = { ...data, id: this.generateId(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      items.push(item);
+      this.setCollection('nomencladores_receptivos', items);
+      return item;
+    },
+    update: (id: string, data: Partial<NomReceptivo>): NomReceptivo => {
+      const items = this.getCollection<NomReceptivo>('nomencladores_receptivos');
+      const idx = items.findIndex(r => r.id === id);
+      if (idx === -1) throw new Error('Receptivo no encontrado');
+      if (data.siglas) {
+        const dup = items.find(r => r.siglas === data.siglas && r.id !== id);
+        if (dup) throw new Error('Las siglas ya están en uso');
+      }
+      items[idx] = { ...items[idx], ...data, updatedAt: new Date().toISOString() };
+      this.setCollection('nomencladores_receptivos', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const empresas = this.nomEmpresas.getByReceptivo(id);
+      if (empresas.length > 0) throw new Error('No se puede eliminar: tiene empresas asociadas (RB-NOM-03)');
+      const items = this.getCollection<NomReceptivo>('nomencladores_receptivos').filter(r => r.id !== id);
+      this.setCollection('nomencladores_receptivos', items);
+    },
+  };
+
+  nomEmpresas = {
+    getAll: (): NomEmpresa[] => this.getCollection<NomEmpresa>('nomencladores_empresas'),
+    getById: (id: string): NomEmpresa | undefined => this.getCollection<NomEmpresa>('nomencladores_empresas').find(e => e.id === id),
+    getByReceptivo: (receptivoId: string): NomEmpresa[] => this.getCollection<NomEmpresa>('nomencladores_empresas').filter(e => e.receptivoId === receptivoId),
+    getActivos: (): NomEmpresa[] => this.getCollection<NomEmpresa>('nomencladores_empresas').filter(e => e.activo),
+    create: (data: Omit<NomEmpresa, 'id' | 'createdAt' | 'updatedAt'>): NomEmpresa => {
+      const items = this.getCollection<NomEmpresa>('nomencladores_empresas');
+      const dup = items.find(e => e.codigo === data.codigo && e.receptivoId === data.receptivoId);
+      if (dup) throw new Error('El código ya existe en este receptivo (RB-NOM-04)');
+      const item: NomEmpresa = { ...data, id: this.generateId(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      items.push(item);
+      this.setCollection('nomencladores_empresas', items);
+      return item;
+    },
+    update: (id: string, data: Partial<NomEmpresa>): NomEmpresa => {
+      const items = this.getCollection<NomEmpresa>('nomencladores_empresas');
+      const idx = items.findIndex(e => e.id === id);
+      if (idx === -1) throw new Error('Empresa no encontrada');
+      items[idx] = { ...items[idx], ...data, updatedAt: new Date().toISOString() };
+      this.setCollection('nomencladores_empresas', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<NomEmpresa>('nomencladores_empresas').filter(e => e.id !== id);
+      this.setCollection('nomencladores_empresas', items);
+    },
+  };
+
+  nomTiposParticipacion = {
+    getAll: (): NomTipoParticipacion[] => this.getCollection<NomTipoParticipacion>('nomencladores_tiposParticipacion'),
+    getById: (id: string): NomTipoParticipacion | undefined => this.getCollection<NomTipoParticipacion>('nomencladores_tiposParticipacion').find(t => t.id === id),
+    getActivos: (): NomTipoParticipacion[] => this.getCollection<NomTipoParticipacion>('nomencladores_tiposParticipacion').filter(t => t.activo),
+    create: (data: Omit<NomTipoParticipacion, 'id'>): NomTipoParticipacion => {
+      const items = this.getCollection<NomTipoParticipacion>('nomencladores_tiposParticipacion');
+      const item: NomTipoParticipacion = { ...data, id: this.generateId() };
+      items.push(item);
+      this.setCollection('nomencladores_tiposParticipacion', items);
+      return item;
+    },
+    update: (id: string, data: Partial<NomTipoParticipacion>): NomTipoParticipacion => {
+      const items = this.getCollection<NomTipoParticipacion>('nomencladores_tiposParticipacion');
+      const idx = items.findIndex(t => t.id === id);
+      if (idx === -1) throw new Error('Tipo no encontrado');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('nomencladores_tiposParticipacion', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<NomTipoParticipacion>('nomencladores_tiposParticipacion').filter(t => t.id !== id);
+      this.setCollection('nomencladores_tiposParticipacion', items);
+    },
+  };
+
+  nomTiposTransporte = {
+    getAll: (): NomTipoTransporte[] => this.getCollection<NomTipoTransporte>('nomencladores_tiposTransporte'),
+    getById: (id: string): NomTipoTransporte | undefined => this.getCollection<NomTipoTransporte>('nomencladores_tiposTransporte').find(t => t.id === id),
+    getActivos: (): NomTipoTransporte[] => this.getCollection<NomTipoTransporte>('nomencladores_tiposTransporte').filter(t => t.activo),
+    create: (data: Omit<NomTipoTransporte, 'id'>): NomTipoTransporte => {
+      const items = this.getCollection<NomTipoTransporte>('nomencladores_tiposTransporte');
+      const item: NomTipoTransporte = { ...data, id: this.generateId() };
+      items.push(item);
+      this.setCollection('nomencladores_tiposTransporte', items);
+      return item;
+    },
+    update: (id: string, data: Partial<NomTipoTransporte>): NomTipoTransporte => {
+      const items = this.getCollection<NomTipoTransporte>('nomencladores_tiposTransporte');
+      const idx = items.findIndex(t => t.id === id);
+      if (idx === -1) throw new Error('Tipo no encontrado');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('nomencladores_tiposTransporte', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<NomTipoTransporte>('nomencladores_tiposTransporte').filter(t => t.id !== id);
+      this.setCollection('nomencladores_tiposTransporte', items);
+    },
+  };
+
+  nomHoteles = {
+    getAll: (): NomHotel[] => this.getCollection<NomHotel>('nomencladores_hoteles'),
+    getById: (id: string): NomHotel | undefined => this.getCollection<NomHotel>('nomencladores_hoteles').find(h => h.id === id),
+    getActivos: (): NomHotel[] => this.getCollection<NomHotel>('nomencladores_hoteles').filter(h => h.activo),
+    create: (data: Omit<NomHotel, 'id' | 'createdAt' | 'updatedAt'>): NomHotel => {
+      const items = this.getCollection<NomHotel>('nomencladores_hoteles');
+      const item: NomHotel = { ...data, id: this.generateId(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      items.push(item);
+      this.setCollection('nomencladores_hoteles', items);
+      return item;
+    },
+    update: (id: string, data: Partial<NomHotel>): NomHotel => {
+      const items = this.getCollection<NomHotel>('nomencladores_hoteles');
+      const idx = items.findIndex(h => h.id === id);
+      if (idx === -1) throw new Error('Hotel no encontrado');
+      items[idx] = { ...items[idx], ...data, updatedAt: new Date().toISOString() };
+      this.setCollection('nomencladores_hoteles', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const eventoHoteles = this.eventoHoteles.getByHotel(id);
+      if (eventoHoteles.length > 0) throw new Error('No se puede eliminar: tiene eventos asociados (RB-NOM-07)');
+      const items = this.getCollection<NomHotel>('nomencladores_hoteles').filter(h => h.id !== id);
+      this.setCollection('nomencladores_hoteles', items);
+    },
+  };
+
+  nomTiposHabitacion = {
+    getAll: (): NomTipoHabitacion[] => this.getCollection<NomTipoHabitacion>('nomencladores_tiposHabitacion'),
+    getById: (id: string): NomTipoHabitacion | undefined => this.getCollection<NomTipoHabitacion>('nomencladores_tiposHabitacion').find(t => t.id === id),
+    getActivos: (): NomTipoHabitacion[] => this.getCollection<NomTipoHabitacion>('nomencladores_tiposHabitacion').filter(t => t.activo),
+    create: (data: Omit<NomTipoHabitacion, 'id'>): NomTipoHabitacion => {
+      const items = this.getCollection<NomTipoHabitacion>('nomencladores_tiposHabitacion');
+      const item: NomTipoHabitacion = { ...data, id: this.generateId() };
+      items.push(item);
+      this.setCollection('nomencladores_tiposHabitacion', items);
+      return item;
+    },
+    update: (id: string, data: Partial<NomTipoHabitacion>): NomTipoHabitacion => {
+      const items = this.getCollection<NomTipoHabitacion>('nomencladores_tiposHabitacion');
+      const idx = items.findIndex(t => t.id === id);
+      if (idx === -1) throw new Error('Tipo no encontrado');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('nomencladores_tiposHabitacion', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<NomTipoHabitacion>('nomencladores_tiposHabitacion').filter(t => t.id !== id);
+      this.setCollection('nomencladores_tiposHabitacion', items);
+    },
+  };
+
+  hotelTiposHabitacion = {
+    getAll: (): HotelTipoHabitacion[] => this.getCollection<HotelTipoHabitacion>('nomencladores_hotelTiposHabitacion'),
+    getByHotel: (hotelId: string): HotelTipoHabitacion[] => this.getCollection<HotelTipoHabitacion>('nomencladores_hotelTiposHabitacion').filter(h => h.hotelId === hotelId),
+    getByTipo: (tipoId: string): HotelTipoHabitacion[] => this.getCollection<HotelTipoHabitacion>('nomencladores_hotelTiposHabitacion').filter(h => h.tipoHabitacionId === tipoId),
+    create: (data: Omit<HotelTipoHabitacion, 'id'>): HotelTipoHabitacion => {
+      const items = this.getCollection<HotelTipoHabitacion>('nomencladores_hotelTiposHabitacion');
+      const item: HotelTipoHabitacion = { ...data, id: this.generateId() };
+      items.push(item);
+      this.setCollection('nomencladores_hotelTiposHabitacion', items);
+      return item;
+    },
+    update: (id: string, data: Partial<HotelTipoHabitacion>): HotelTipoHabitacion => {
+      const items = this.getCollection<HotelTipoHabitacion>('nomencladores_hotelTiposHabitacion');
+      const idx = items.findIndex(h => h.id === id);
+      if (idx === -1) throw new Error('Relación no encontrada');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('nomencladores_hotelTiposHabitacion', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<HotelTipoHabitacion>('nomencladores_hotelTiposHabitacion').filter(h => h.id !== id);
+      this.setCollection('nomencladores_hotelTiposHabitacion', items);
+    },
+  };
+
+  eventoHoteles = {
+    getAll: (): EventoHotel[] => this.getCollection<EventoHotel>('nomencladores_eventoHotel'),
+    getByEvento: (eventoId: string): EventoHotel[] => this.getCollection<EventoHotel>('nomencladores_eventoHotel').filter(e => e.eventoId === eventoId),
+    getByHotel: (hotelId: string): EventoHotel[] => this.getCollection<EventoHotel>('nomencladores_eventoHotel').filter(e => e.hotelId === hotelId),
+    create: (data: Omit<EventoHotel, 'id'>): EventoHotel => {
+      const items = this.getCollection<EventoHotel>('nomencladores_eventoHotel');
+      const item: EventoHotel = { ...data, id: this.generateId() };
+      items.push(item);
+      this.setCollection('nomencladores_eventoHotel', items);
+      return item;
+    },
+    update: (id: string, data: Partial<EventoHotel>): EventoHotel => {
+      const items = this.getCollection<EventoHotel>('nomencladores_eventoHotel');
+      const idx = items.findIndex(e => e.id === id);
+      if (idx === -1) throw new Error('Asignación no encontrada');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('nomencladores_eventoHotel', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<EventoHotel>('nomencladores_eventoHotel').filter(e => e.id !== id);
+      this.setCollection('nomencladores_eventoHotel', items);
+    },
+  };
+
+  // EVENTO HOTEL HABITACIONES - Precios de habitaciones por evento
+  eventoHotelHabitaciones = {
+    getAll: (): EventoHotelHabitacion[] => this.getCollection<EventoHotelHabitacion>('eventoHotelHabitaciones'),
+    getByEventoHotel: (eventoHotelId: string): EventoHotelHabitacion[] => 
+      this.getCollection<EventoHotelHabitacion>('eventoHotelHabitaciones').filter(h => h.eventoHotelId === eventoHotelId),
+    getByEvento: (eventoId: string): EventoHotelHabitacion[] => {
+      const eventoHoteles = this.eventoHoteles.getByEvento(eventoId);
+      const eventoHotelIds = eventoHoteles.map(eh => eh.id);
+      return this.getCollection<EventoHotelHabitacion>('eventoHotelHabitaciones').filter(h => eventoHotelIds.includes(h.eventoHotelId));
+    },
+    create: (data: Omit<EventoHotelHabitacion, 'id'>): EventoHotelHabitacion => {
+      const items = this.getCollection<EventoHotelHabitacion>('eventoHotelHabitaciones');
+      const item: EventoHotelHabitacion = { ...data, id: this.generateId() };
+      items.push(item);
+      this.setCollection('eventoHotelHabitaciones', items);
+      return item;
+    },
+    update: (id: string, data: Partial<EventoHotelHabitacion>): EventoHotelHabitacion => {
+      const items = this.getCollection<EventoHotelHabitacion>('eventoHotelHabitaciones');
+      const idx = items.findIndex(h => h.id === id);
+      if (idx === -1) throw new Error('Habitación del evento no encontrada');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('eventoHotelHabitaciones', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<EventoHotelHabitacion>('eventoHotelHabitaciones').filter(h => h.id !== id);
+      this.setCollection('eventoHotelHabitaciones', items);
+    },
+    deleteByEventoHotel: (eventoHotelId: string): void => {
+      const items = this.getCollection<EventoHotelHabitacion>('eventoHotelHabitaciones').filter(h => h.eventoHotelId !== eventoHotelId);
+      this.setCollection('eventoHotelHabitaciones', items);
+    },
+  };
+
+  // AUDIT LOG
+  auditLog = {
+    getAll: (): AuditLog[] => this.getCollection<AuditLog>('auditLog').sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    getByUser: (userId: string): AuditLog[] => this.getCollection<AuditLog>('auditLog').filter(l => l.userId === userId),
+    getByEntity: (entity: string, entityId: string): AuditLog[] => this.getCollection<AuditLog>('auditLog').filter(l => l.entity === entity && l.entityId === entityId),
+    create: (data: Omit<AuditLog, 'id' | 'timestamp'>): AuditLog => {
+      const items = this.getCollection<AuditLog>('auditLog');
+      const item: AuditLog = { ...data, id: this.generateId(), timestamp: new Date().toISOString() };
+      items.push(item);
+      this.setCollection('auditLog', items);
+      return item;
+    },
+  };
+
+  // ===== NEW COLLECTIONS CRUD =====
+
+  // SALONES
+  salones = {
+    getAll: (): Salon[] => this.getCollection<Salon>('salones'),
+    getByHotel: (hotelId: string): Salon[] => this.getCollection<Salon>('salones').filter(s => s.hotelId === hotelId),
+    getActivosByHotel: (hotelId: string): Salon[] => this.getCollection<Salon>('salones').filter(s => s.hotelId === hotelId && s.estado === 'ACTIVO'),
+    getById: (id: string): Salon | undefined => this.getCollection<Salon>('salones').find(s => s.id === id),
+    canDelete: (id: string): { can: boolean; reason?: string } => {
+      const subEventos = this.subEventos.getAll().filter(se => se.salonId === id);
+      if (subEventos.length > 0) return { can: false, reason: `Usado en ${subEventos.length} SubEventos` };
+      const sesiones = this.eventSessions.getAll().filter(s => (s as any).salonId === id);
+      if (sesiones.length > 0) return { can: false, reason: `Usado en ${sesiones.length} Sesiones` };
+      const actividades = this.actividadesSociales.getAll().filter(a => (a as any).salonId === id);
+      if (actividades.length > 0) return { can: false, reason: `Usado en ${actividades.length} Actividades` };
+      return { can: true };
+    },
+    create: (data: Omit<Salon, 'id' | 'createdAt' | 'updatedAt'>): Salon => {
+      const items = this.getCollection<Salon>('salones');
+      const now = new Date().toISOString();
+      const item: Salon = { ...data, id: this.generateId(), createdAt: now, updatedAt: now };
+      items.push(item);
+      this.setCollection('salones', items);
+      return item;
+    },
+    update: (id: string, data: Partial<Salon>): Salon => {
+      const items = this.getCollection<Salon>('salones');
+      const idx = items.findIndex(s => s.id === id);
+      if (idx === -1) throw new Error('Salón no encontrado');
+      items[idx] = { ...items[idx], ...data, updatedAt: new Date().toISOString() };
+      this.setCollection('salones', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const { can, reason } = this.salones.canDelete(id);
+      if (!can) throw new Error(`No se puede eliminar: ${reason}`);
+      const items = this.getCollection<Salon>('salones').filter(s => s.id !== id);
+      this.setCollection('salones', items);
+    },
+  };
+
+  // SUBEVENTOS (antes Event Simple)
+  subEventos = {
+    getAll: (): SubEvento[] => this.getCollection<SubEvento>('subEventos'),
+    getByEvento: (eventoId: string): SubEvento[] => this.getCollection<SubEvento>('subEventos').filter(se => se.eventoId === eventoId),
+    getById: (id: string): SubEvento | undefined => this.getCollection<SubEvento>('subEventos').find(se => se.id === id),
+    getBySalon: (salonId: string): SubEvento[] => this.getCollection<SubEvento>('subEventos').filter(se => se.salonId === salonId),
+    getByTematica: (tematicaId: string): SubEvento[] => this.getCollection<SubEvento>('subEventos').filter(se => se.tematicaId === tematicaId),
+    create: (data: Omit<SubEvento, 'id' | 'createdAt'>): SubEvento => {
+      const items = this.getCollection<SubEvento>('subEventos');
+      const item: SubEvento = { ...data, id: this.generateId(), createdAt: new Date().toISOString() };
+      items.push(item);
+      this.setCollection('subEventos', items);
+      return item;
+    },
+    update: (id: string, data: Partial<SubEvento>): SubEvento => {
+      const items = this.getCollection<SubEvento>('subEventos');
+      const idx = items.findIndex(se => se.id === id);
+      if (idx === -1) throw new Error('SubEvento no encontrado');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('subEventos', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<SubEvento>('subEventos').filter(se => se.id !== id);
+      this.setCollection('subEventos', items);
+    },
+  };
+
+  // ACTIVIDADES SOCIALES
+  actividadesSociales = {
+    getAll: (): ActividadSocial[] => this.getCollection<ActividadSocial>('actividadesSociales'),
+    getByEvento: (eventoId: string): ActividadSocial[] => this.getCollection<ActividadSocial>('actividadesSociales').filter(a => a.eventoId === eventoId),
+    getActivasByEvento: (eventoId: string): ActividadSocial[] => this.getCollection<ActividadSocial>('actividadesSociales').filter(a => a.eventoId === eventoId && a.estado === 'ACTIVO'),
+    getById: (id: string): ActividadSocial | undefined => this.getCollection<ActividadSocial>('actividadesSociales').find(a => a.id === id),
+    create: (data: Omit<ActividadSocial, 'id' | 'createdAt'>): ActividadSocial => {
+      const items = this.getCollection<ActividadSocial>('actividadesSociales');
+      const item: ActividadSocial = { ...data, id: this.generateId(), createdAt: new Date().toISOString() };
+      items.push(item);
+      this.setCollection('actividadesSociales', items);
+      return item;
+    },
+    update: (id: string, data: Partial<ActividadSocial>): ActividadSocial => {
+      const items = this.getCollection<ActividadSocial>('actividadesSociales');
+      const idx = items.findIndex(a => a.id === id);
+      if (idx === -1) throw new Error('Actividad no encontrada');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('actividadesSociales', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      // También eliminar reservas asociadas
+      const reservas = this.reservasActividades.getByActividad(id);
+      reservas.forEach(r => this.reservasActividades.delete(r.id));
+      const items = this.getCollection<ActividadSocial>('actividadesSociales').filter(a => a.id !== id);
+      this.setCollection('actividadesSociales', items);
+    },
+  };
+
+  // RESERVAS ACTIVIDADES SOCIALES
+  reservasActividades = {
+    getAll: (): ReservaActividadSocial[] => this.getCollection<ReservaActividadSocial>('reservasActividades'),
+    getByActividad: (actividadId: string): ReservaActividadSocial[] => this.getCollection<ReservaActividadSocial>('reservasActividades').filter(r => r.actividadId === actividadId),
+    getByUsuario: (usuarioId: string): ReservaActividadSocial[] => this.getCollection<ReservaActividadSocial>('reservasActividades').filter(r => r.usuarioId === usuarioId),
+    getByActividadAndUsuario: (actividadId: string, usuarioId: string): ReservaActividadSocial | undefined =>
+      this.getCollection<ReservaActividadSocial>('reservasActividades').find(r => r.actividadId === actividadId && r.usuarioId === usuarioId),
+    countByActividad: (actividadId: string): number => this.getCollection<ReservaActividadSocial>('reservasActividades').filter(r => r.actividadId === actividadId).length,
+    create: (data: Omit<ReservaActividadSocial, 'id' | 'fechaReserva'>): ReservaActividadSocial => {
+      const items = this.getCollection<ReservaActividadSocial>('reservasActividades');
+      const item: ReservaActividadSocial = { ...data, id: this.generateId(), fechaReserva: new Date().toISOString() };
+      items.push(item);
+      this.setCollection('reservasActividades', items);
+      return item;
+    },
+    update: (id: string, data: Partial<ReservaActividadSocial>): ReservaActividadSocial => {
+      const items = this.getCollection<ReservaActividadSocial>('reservasActividades');
+      const idx = items.findIndex(r => r.id === id);
+      if (idx === -1) throw new Error('Reserva no encontrada');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('reservasActividades', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<ReservaActividadSocial>('reservasActividades').filter(r => r.id !== id);
+      this.setCollection('reservasActividades', items);
+    },
+  };
+
+  // EVENTO SALONES
+  eventoSalones = {
+    getAll: (): EventoSalon[] => this.getCollection<EventoSalon>('eventoSalones'),
+    getByEvento: (eventoId: string): EventoSalon[] => this.getCollection<EventoSalon>('eventoSalones').filter(es => es.eventoId === eventoId),
+    getBySalon: (salonId: string): EventoSalon[] => this.getCollection<EventoSalon>('eventoSalones').filter(es => es.salonId === salonId),
+    create: (data: Omit<EventoSalon, 'id'>): EventoSalon => {
+      const items = this.getCollection<EventoSalon>('eventoSalones');
+      const item: EventoSalon = { ...data, id: this.generateId() };
+      items.push(item);
+      this.setCollection('eventoSalones', items);
+      return item;
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<EventoSalon>('eventoSalones').filter(es => es.id !== id);
+      this.setCollection('eventoSalones', items);
+    },
+    deleteByEvento: (eventoId: string): void => {
+      const items = this.getCollection<EventoSalon>('eventoSalones').filter(es => es.eventoId !== eventoId);
+      this.setCollection('eventoSalones', items);
+    },
+  };
+
+  // EVENTO TIPOS PARTICIPACION
+  eventoTiposParticipacion = {
+    getAll: (): EventoTipoParticipacion[] => this.getCollection<EventoTipoParticipacion>('eventoTiposParticipacion'),
+    getByEvento: (eventoId: string): EventoTipoParticipacion[] => this.getCollection<EventoTipoParticipacion>('eventoTiposParticipacion').filter(etp => etp.eventoId === eventoId),
+    create: (data: Omit<EventoTipoParticipacion, 'id'>): EventoTipoParticipacion => {
+      const items = this.getCollection<EventoTipoParticipacion>('eventoTiposParticipacion');
+      const item: EventoTipoParticipacion = { ...data, id: this.generateId() };
+      items.push(item);
+      this.setCollection('eventoTiposParticipacion', items);
+      return item;
+    },
+    update: (id: string, data: Partial<EventoTipoParticipacion>): EventoTipoParticipacion => {
+      const items = this.getCollection<EventoTipoParticipacion>('eventoTiposParticipacion');
+      const idx = items.findIndex(etp => etp.id === id);
+      if (idx === -1) throw new Error('Tipo de participación no encontrado');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('eventoTiposParticipacion', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<EventoTipoParticipacion>('eventoTiposParticipacion').filter(etp => etp.id !== id);
+      this.setCollection('eventoTiposParticipacion', items);
+    },
+    deleteByEvento: (eventoId: string): void => {
+      const items = this.getCollection<EventoTipoParticipacion>('eventoTiposParticipacion').filter(etp => etp.eventoId !== eventoId);
+      this.setCollection('eventoTiposParticipacion', items);
+    },
+  };
+
+  // RUTAS TRANSPORTE
+  rutasTransporte = {
+    getAll: (): RutaTransporte[] => this.getCollection<RutaTransporte>('rutasTransporte'),
+    getByEvento: (eventoId: string): RutaTransporte[] => this.getCollection<RutaTransporte>('rutasTransporte').filter(r => r.eventoId === eventoId),
+    getActivasByEvento: (eventoId: string): RutaTransporte[] => this.getCollection<RutaTransporte>('rutasTransporte').filter(r => r.eventoId === eventoId && r.activo),
+    getById: (id: string): RutaTransporte | undefined => this.getCollection<RutaTransporte>('rutasTransporte').find(r => r.id === id),
+    create: (data: Omit<RutaTransporte, 'id' | 'createdAt'>): RutaTransporte => {
+      const items = this.getCollection<RutaTransporte>('rutasTransporte');
+      const item: RutaTransporte = { ...data, id: this.generateId(), createdAt: new Date().toISOString() };
+      items.push(item);
+      this.setCollection('rutasTransporte', items);
+      return item;
+    },
+    update: (id: string, data: Partial<RutaTransporte>): RutaTransporte => {
+      const items = this.getCollection<RutaTransporte>('rutasTransporte');
+      const idx = items.findIndex(r => r.id === id);
+      if (idx === -1) throw new Error('Ruta no encontrada');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('rutasTransporte', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<RutaTransporte>('rutasTransporte').filter(r => r.id !== id);
+      this.setCollection('rutasTransporte', items);
+    },
+    deleteByEvento: (eventoId: string): void => {
+      const items = this.getCollection<RutaTransporte>('rutasTransporte').filter(r => r.eventoId !== eventoId);
+      this.setCollection('rutasTransporte', items);
+    },
+  };
+
+  // NOMENCLADORES DEL EVENTO (Paso 8)
+  nomencladoresEvento = {
+    getAll: (): NomencladorEvento[] => this.getCollection<NomencladorEvento>('nomencladoresEvento'),
+    getByEvento: (eventoId: string): NomencladorEvento[] => this.getCollection<NomencladorEvento>('nomencladoresEvento').filter(n => n.eventoId === eventoId),
+    getByEventoAndTipo: (eventoId: string, tipo: TipoNomencladorEvento): NomencladorEvento[] =>
+      this.getCollection<NomencladorEvento>('nomencladoresEvento').filter(n => n.eventoId === eventoId && n.tipo === tipo),
+    getActivosByEvento: (eventoId: string): NomencladorEvento[] =>
+      this.getCollection<NomencladorEvento>('nomencladoresEvento').filter(n => n.eventoId === eventoId && n.activo),
+    getById: (id: string): NomencladorEvento | undefined => this.getCollection<NomencladorEvento>('nomencladoresEvento').find(n => n.id === id),
+    create: (data: Omit<NomencladorEvento, 'id' | 'createdAt'>): NomencladorEvento => {
+      const items = this.getCollection<NomencladorEvento>('nomencladoresEvento');
+      const item: NomencladorEvento = { ...data, id: this.generateId(), createdAt: new Date().toISOString() };
+      items.push(item);
+      this.setCollection('nomencladoresEvento', items);
+      return item;
+    },
+    update: (id: string, data: Partial<NomencladorEvento>): NomencladorEvento => {
+      const items = this.getCollection<NomencladorEvento>('nomencladoresEvento');
+      const idx = items.findIndex(n => n.id === id);
+      if (idx === -1) throw new Error('Nomenclador no encontrado');
+      items[idx] = { ...items[idx], ...data };
+      this.setCollection('nomencladoresEvento', items);
+      return items[idx];
+    },
+    delete: (id: string): void => {
+      const items = this.getCollection<NomencladorEvento>('nomencladoresEvento').filter(n => n.id !== id);
+      this.setCollection('nomencladoresEvento', items);
+    },
+    deleteByEvento: (eventoId: string): void => {
+      const items = this.getCollection<NomencladorEvento>('nomencladoresEvento').filter(n => n.eventoId !== eventoId);
+      this.setCollection('nomencladoresEvento', items);
+    },
+  };
+
+  // WIZARD PROGRESS
+  wizardProgress = {
+    get: (eventoId: string): WizardProgress | undefined => this.getCollection<WizardProgress>('wizardProgress').find(w => w.eventoId === eventoId),
+    create: (data: Omit<WizardProgress, 'ultimaModificacion'>): WizardProgress => {
+      const items = this.getCollection<WizardProgress>('wizardProgress');
+      const existing = items.findIndex(w => w.eventoId === data.eventoId);
+      if (existing !== -1) {
+        items[existing] = { ...items[existing], ...data, ultimaModificacion: new Date().toISOString() };
+        this.setCollection('wizardProgress', items);
+        return items[existing];
+      }
+      const item: WizardProgress = { ...data, ultimaModificacion: new Date().toISOString() };
+      items.push(item);
+      this.setCollection('wizardProgress', items);
+      return item;
+    },
+    update: (eventoId: string, data: Partial<WizardProgress>): WizardProgress => {
+      const items = this.getCollection<WizardProgress>('wizardProgress');
+      const idx = items.findIndex(w => w.eventoId === eventoId);
+      if (idx === -1) throw new Error('Progreso no encontrado');
+      items[idx] = { ...items[idx], ...data, ultimaModificacion: new Date().toISOString() };
+      this.setCollection('wizardProgress', items);
+      return items[idx];
+    },
+    delete: (eventoId: string): void => {
+      const items = this.getCollection<WizardProgress>('wizardProgress').filter(w => w.eventoId !== eventoId);
+      this.setCollection('wizardProgress', items);
+    },
+  };
+
+  // DATA ISOLATION HELPER
+  getFilteredData = <T extends Record<string, any>>(
+    collection: string,
+    user: User,
+    receptivoField = 'receptivoId',
+    empresaField = 'empresaId'
+  ): T[] => {
+    const data = this.getCollection<T>(collection);
+    switch (user.role) {
+      case 'SUPERADMIN':
+        return data; // Full access
+      case 'ADMIN_RECEPTIVO':
+      case 'LECTOR_RECEPTIVO':
+        return data.filter(item => item[receptivoField] === user.receptivoId);
+      case 'ADMIN_EMPRESA':
+      case 'LECTOR_EMPRESA':
+        return data.filter(item => item[receptivoField] === user.receptivoId && item[empresaField] === user.empresaId);
+      case 'COORDINADOR_HOTEL':
+        // Special: filter by evento_hotel assignments
+        const eventoHoteles = this.eventoHoteles.getByHotel(user.hotelId || '');
+        const eventoIds = eventoHoteles.map(eh => eh.eventoId);
+        return data.filter(item => eventoIds.includes(item['eventoId'] || item['macroEventId'] || item['id']));
+      default:
+        return data;
+    }
   };
 }
 

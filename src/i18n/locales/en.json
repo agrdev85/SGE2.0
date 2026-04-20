@@ -1,0 +1,58 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "loading": "Loading...",
+    "success": "Success",
+    "error": "Error",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous"
+  },
+  "nav": {
+    "home": "Home",
+    "events": "Events",
+    "users": "Users",
+    "settings": "Settings",
+    "profile": "Profile",
+    "logout": "Logout"
+  },
+  "auth": {
+    "login": "Login",
+    "register": "Register",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot password?",
+    "welcome": "Welcome"
+  },
+  "events": {
+    "title": "Events",
+    "create": "Create event",
+    "edit": "Edit event",
+    "delete": "Delete event",
+    "name": "Event name",
+    "date": "Date",
+    "location": "Location",
+    "description": "Description",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "wizard": {
+    "step1": "Basic Information",
+    "step2": "Hotels",
+    "step3": "Participation",
+    "step4": "Transportation",
+    "step5": "Social Program",
+    "step6": "Nomenclators",
+    "step7": "Final Configuration",
+    "saveAndContinue": "Save and Continue",
+    "previous": "Previous",
+    "finish": "Finish"
+  }
+}

@@ -100,11 +100,11 @@ export function CertificateManager({ event }: CertificateManagerProps) {
   const getEligibleUsers = (): User[] => {
     const allUsers = db.users.getAll();
     const eventAbstracts = db.abstracts.getByEvent(event.id);
+    const participantIds = [...new Set(eventAbstracts.map(a => a.userId))];
 
     switch (certificateType) {
       case 'participation':
-        const participantIds = [...new Set(eventAbstracts.map(a => a.userId))];
-        return allUsers.filter(u => participantIds.includes(u.id));
+        return allUsers.filter(u => participantIds.includes(u.id) || u.role !== 'USER');
       case 'presentation':
         const presenterIds = [...new Set(
           eventAbstracts.filter(a => a.status === 'APROBADO').map(a => a.userId)
@@ -113,7 +113,7 @@ export function CertificateManager({ event }: CertificateManagerProps) {
       case 'reviewer':
         return allUsers.filter(u => u.role === 'REVIEWER');
       default:
-        return [];
+        return allUsers.filter(u => participantIds.includes(u.id));
     }
   };
 
@@ -382,6 +382,165 @@ export function CertificateManager({ event }: CertificateManagerProps) {
             </CardContent>
           </Card>
 
+          {/* Text Colors */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Textos y Colores</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center justify-between">
+                    Título
+                    <Input
+                      type="text"
+                      value={config.title}
+                      onChange={(e) => { setConfig({ ...config, title: e.target.value }); setIsSaved(false); }}
+                      className="h-6 w-32 text-xs"
+                    />
+                  </Label>
+                  <div className="flex gap-1 items-center">
+                    <Input
+                      type="color"
+                      value={config.titleColor}
+                      onChange={(e) => { setConfig({ ...config, titleColor: e.target.value }); setIsSaved(false); }}
+                      className="w-8 h-6 p-0.5 cursor-pointer"
+                    />
+                    <Input
+                      value={config.titleColor}
+                      onChange={(e) => { setConfig({ ...config, titleColor: e.target.value }); setIsSaved(false); }}
+                      className="flex-1 h-6 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center justify-between">
+                    Subtítulo
+                    <Input
+                      type="text"
+                      value={config.subtitle}
+                      onChange={(e) => { setConfig({ ...config, subtitle: e.target.value }); setIsSaved(false); }}
+                      placeholder="Ej: de Participación"
+                      className="h-6 w-32 text-xs"
+                    />
+                  </Label>
+                  <div className="flex gap-1 items-center">
+                    <Input
+                      type="color"
+                      value={config.subtitleColor}
+                      onChange={(e) => { setConfig({ ...config, subtitleColor: e.target.value }); setIsSaved(false); }}
+                      className="w-8 h-6 p-0.5 cursor-pointer"
+                    />
+                    <Input
+                      value={config.subtitleColor}
+                      onChange={(e) => { setConfig({ ...config, subtitleColor: e.target.value }); setIsSaved(false); }}
+                      className="flex-1 h-6 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center justify-between">
+                    Texto Principal
+                    <Input
+                      type="text"
+                      value={config.bodyTemplate}
+                      onChange={(e) => { setConfig({ ...config, bodyTemplate: e.target.value }); setIsSaved(false); }}
+                      placeholder="ha participado en..."
+                      className="h-6 w-32 text-xs"
+                    />
+                  </Label>
+                  <div className="flex gap-1 items-center">
+                    <Input
+                      type="color"
+                      value={config.bodyTextColor}
+                      onChange={(e) => { setConfig({ ...config, bodyTextColor: e.target.value }); setIsSaved(false); }}
+                      className="w-8 h-6 p-0.5 cursor-pointer"
+                    />
+                    <Input
+                      value={config.bodyTextColor}
+                      onChange={(e) => { setConfig({ ...config, bodyTextColor: e.target.value }); setIsSaved(false); }}
+                      className="flex-1 h-6 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center justify-between">
+                    Nombre Participante
+                    <Input
+                      type="color"
+                      value={config.userNameColor}
+                      onChange={(e) => { setConfig({ ...config, userNameColor: e.target.value }); setIsSaved(false); }}
+                      className="w-8 h-6 p-0.5 cursor-pointer"
+                    />
+                  </Label>
+                  <div className="flex gap-1 items-center">
+                    <span className="text-xs text-muted-foreground w-20">Color del nombre</span>
+                    <Input
+                      value={config.userNameColor}
+                      onChange={(e) => { setConfig({ ...config, userNameColor: e.target.value }); setIsSaved(false); }}
+                      className="flex-1 h-6 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center justify-between">
+                    Encabezado
+                    <Input
+                      type="text"
+                      value={config.headerText}
+                      onChange={(e) => { setConfig({ ...config, headerText: e.target.value }); setIsSaved(false); }}
+                      placeholder="Se certifica que"
+                      className="h-6 w-32 text-xs"
+                    />
+                  </Label>
+                  <div className="flex gap-1 items-center">
+                    <Input
+                      type="color"
+                      value={config.headerTextColor}
+                      onChange={(e) => { setConfig({ ...config, headerTextColor: e.target.value }); setIsSaved(false); }}
+                      className="w-8 h-6 p-0.5 cursor-pointer"
+                    />
+                    <Input
+                      value={config.headerTextColor}
+                      onChange={(e) => { setConfig({ ...config, headerTextColor: e.target.value }); setIsSaved(false); }}
+                      className="flex-1 h-6 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center justify-between">
+                    Pie de Página
+                    <Input
+                      type="text"
+                      value={config.footerText}
+                      onChange={(e) => { setConfig({ ...config, footerText: e.target.value }); setIsSaved(false); }}
+                      placeholder="Texto del footer"
+                      className="h-6 w-32 text-xs"
+                    />
+                  </Label>
+                  <div className="flex gap-1 items-center">
+                    <Input
+                      type="color"
+                      value={config.footerTextColor}
+                      onChange={(e) => { setConfig({ ...config, footerTextColor: e.target.value }); setIsSaved(false); }}
+                      className="w-8 h-6 p-0.5 cursor-pointer"
+                    />
+                    <Input
+                      value={config.footerTextColor}
+                      onChange={(e) => { setConfig({ ...config, footerTextColor: e.target.value }); setIsSaved(false); }}
+                      className="flex-1 h-6 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Elements Panel */}
           <ElementsPanel
             elements={elements}
@@ -423,6 +582,14 @@ export function CertificateManager({ event }: CertificateManagerProps) {
                   previewData={previewData}
                   device={previewDevice}
                   interactive={true}
+                  colorOverrides={{
+                    'title': config.titleColor,
+                    'subtitle': config.subtitleColor,
+                    'body-text': config.bodyTextColor,
+                    'header-text': config.headerTextColor,
+                    'footer-text': config.footerTextColor,
+                    'participant-name': config.userNameColor,
+                  }}
                 />
               </div>
             </CardContent>
@@ -431,80 +598,91 @@ export function CertificateManager({ event }: CertificateManagerProps) {
       </div>
 
       {/* Generate Section */}
-      <Card>
-        <CardHeader>
+      <Card className="border-2">
+        <CardHeader className="bg-muted/50 border-b">
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Generar Certificados</CardTitle>
-              <CardDescription>
-                {eligibleUsers.length} usuarios elegibles para certificado de{' '}
-                {certificateType === 'participation' ? 'participación' : 
-                 certificateType === 'presentation' ? 'presentación' : 'revisor'}
-              </CardDescription>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Award className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Generar Certificados</CardTitle>
+                <CardDescription>
+                  {eligibleUsers.length} usuarios elegibles para certificado de{' '}
+                  {certificateType === 'participation' ? 'participación' : 
+                   certificateType === 'presentation' ? 'presentación' : 'revisor'}
+                </CardDescription>
+              </div>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={handleSelectAll}>
                 {selectedUsers.length === eligibleUsers.length ? 'Deseleccionar' : 'Seleccionar'} todos
               </Button>
-              <Badge variant="secondary">{selectedUsers.length} seleccionados</Badge>
+              <Badge variant="secondary" className="text-sm px-3 py-1">{selectedUsers.length} seleccionados</Badge>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4">
           {eligibleUsers.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No hay usuarios elegibles para este tipo de certificado</p>
             </div>
           ) : (
-            <ScrollArea className="h-[250px]">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                {eligibleUsers.map((user) => {
-                  const userAbstract = certificateType === 'presentation'
-                    ? eventAbstracts.find(a => a.userId === user.id && a.status === 'APROBADO')
-                    : null;
+            <>
+              <ScrollArea className="h-[300px] rounded-lg border bg-card">
+                <div className="p-3 space-y-2">
+                  {eligibleUsers.map((user) => {
+                    const userAbstract = certificateType === 'presentation'
+                      ? eventAbstracts.find(a => a.userId === user.id && a.status === 'APROBADO')
+                      : null;
 
-                  return (
-                    <div
-                      key={user.id}
-                      className={cn(
-                        "flex items-center gap-2 p-2 rounded-lg border transition-colors cursor-pointer",
-                        selectedUsers.includes(user.id) ? "bg-primary/5 border-primary" : "hover:bg-muted/50"
-                      )}
-                      onClick={() => handleToggleUser(user.id)}
-                    >
-                      <Checkbox checked={selectedUsers.includes(user.id)} />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{user.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{user.affiliation}</p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0"
-                        onClick={(e) => { e.stopPropagation(); handleGenerateSingle(user); }}
+                    return (
+                      <div
+                        key={user.id}
+                        className={cn(
+                          "flex items-center gap-3 p-3 rounded-lg border-2 transition-all cursor-pointer",
+                          selectedUsers.includes(user.id) 
+                            ? "bg-primary/10 border-primary shadow-sm" 
+                            : "bg-background hover:bg-muted/50 border-border"
+                        )}
+                        onClick={() => handleToggleUser(user.id)}
                       >
-                        <Download className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            </ScrollArea>
-          )}
+                        <Checkbox checked={selectedUsers.includes(user.id)} className="shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm truncate">{user.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{user.affiliation || user.email}</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 h-8 gap-1.5"
+                          onClick={(e) => { e.stopPropagation(); handleGenerateSingle(user); }}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">PDF</span>
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
 
-          <div className="flex gap-4 mt-4">
-            <Button
-              className="flex-1"
-              size="lg"
-              variant="hero"
-              onClick={handleExportAll}
-              disabled={selectedUsers.length === 0 || isExporting}
-            >
-              <FileDown className="h-5 w-5 mr-2" />
-              {isExporting ? 'Exportando...' : `Exportar ${selectedUsers.length} Certificados (PDF único)`}
-            </Button>
-          </div>
+              <div className="mt-4 pt-4 border-t flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Selecciona usuarios y exporta los certificados
+                </p>
+                <Button
+                  variant="hero"
+                  onClick={handleExportAll}
+                  disabled={selectedUsers.length === 0 || isExporting}
+                >
+                  <FileDown className="h-4 w-4 mr-2" />
+                  {isExporting ? 'Exportando...' : `Exportar ${selectedUsers.length} Certificados`}
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

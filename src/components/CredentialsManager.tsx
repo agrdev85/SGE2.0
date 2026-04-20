@@ -47,6 +47,11 @@ const defaultConfig: CredentialDesignConfig = {
   showCountry: false,
   qrDataFields: ['name', 'email', 'event'],
   elements: [],
+  nameColor: '#1e293b',
+  roleColor: '#059669',
+  affiliationColor: '#6b7280',
+  headerBgColor: '#1e40af',
+  footerBgColor: '#1e40af',
 };
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -61,6 +66,21 @@ async function generateQRDataUrl(data: string): Promise<string> {
     return await QRCode.toDataURL(data, { width: 100, margin: 1 });
   } catch {
     return '';
+  }
+}
+
+async function loadImageAsBase64(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
   }
 }
 
@@ -216,6 +236,26 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
     doc.setFillColor(255, 255, 255);
     doc.rect(0, 0, width, height, 'F');
 
+    // Load user photo if available
+    let userPhotoUrl: string | null = null;
+    if (user.avatar) {
+      try {
+        userPhotoUrl = user.avatar;
+      } catch {
+        userPhotoUrl = null;
+      }
+    }
+
+    // Helper function to get color from config
+    const getElementBgColor = (colorKey?: string) => {
+      if (!colorKey) return null;
+      if (colorKey === 'primary') return primaryRgb;
+      if (colorKey === 'secondary') return secondaryRgb;
+      if (colorKey === cfg.headerBgColor) return hexToRgb(cfg.headerBgColor);
+      if (colorKey === cfg.footerBgColor) return hexToRgb(cfg.footerBgColor);
+      return null;
+    };
+
     // Render elements based on saved positions
     for (const element of elems.filter(e => e.enabled)) {
       const x = (element.x - element.width / 2) * width / 100;
@@ -224,7 +264,14 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
       const h = element.height * height / 100;
 
       if (element.type === 'shape') {
-        const color = element.style.backgroundColor === 'primary' ? primaryRgb : secondaryRgb;
+        let color = primaryRgb;
+        if (element.id === 'header-bar') {
+          color = hexToRgb(cfg.headerBgColor);
+        } else if (element.id === 'footer-bar') {
+          color = hexToRgb(cfg.footerBgColor);
+        } else if (element.style.backgroundColor === 'secondary') {
+          color = secondaryRgb;
+        }
         doc.setFillColor(color.r, color.g, color.b);
         doc.rect(x, y, w, h, 'F');
       }
@@ -238,14 +285,16 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
         content = content.replace('{{pais}}', user.country || '');
         content = content.replace('{{id}}', `ID-${user.id.substring(0, 8).toUpperCase()}`);
 
-        const isWhite = element.style.color === 'white';
-        const isPrimary = element.style.color === 'primary';
-        const isSecondary = element.style.color === 'secondary';
+        let textColor = textRgb;
+        if (element.id === 'participant-name') {
+          textColor = hexToRgb(cfg.nameColor);
+        } else if (element.id === 'role-badge') {
+          textColor = hexToRgb(cfg.roleColor);
+        } else if (element.id === 'affiliation') {
+          textColor = hexToRgb(cfg.affiliationColor);
+        }
         
-        if (isWhite) doc.setTextColor(255, 255, 255);
-        else if (isPrimary) doc.setTextColor(primaryRgb.r, primaryRgb.g, primaryRgb.b);
-        else if (isSecondary) doc.setTextColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
-        else doc.setTextColor(textRgb.r, textRgb.g, textRgb.b);
+        doc.setTextColor(textColor.r, textColor.g, textColor.b);
 
         doc.setFontSize(element.style.fontSize || 10);
         doc.setFont('helvetica', element.style.fontWeight === 'bold' ? 'bold' : 'normal');
@@ -254,9 +303,9 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
         const textY = element.y * height / 100;
         
         // Handle role badge background
-        if (element.id === 'role-badge' && element.style.backgroundColor === 'secondary') {
+        if (element.id === 'role-badge') {
           const textWidth = doc.getTextWidth(content) + 4;
-          doc.setFillColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
+          doc.setFillColor(hexToRgb(cfg.roleColor).r, hexToRgb(cfg.roleColor).g, hexToRgb(cfg.roleColor).b);
           doc.roundedRect(textX - textWidth / 2, textY - 3, textWidth, 5, 1, 1, 'F');
           doc.setTextColor(255, 255, 255);
         }
@@ -266,6 +315,19 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
       }
 
       if (element.type === 'photo') {
+        // Try to load user photo
+        if (userPhotoUrl) {
+          try {
+            const imgData = await loadImageAsBase64(userPhotoUrl);
+            if (imgData) {
+              doc.addImage(imgData, 'PNG', x, y, w, h);
+              continue;
+            }
+          } catch {
+            // Fall through to placeholder
+          }
+        }
+        // Placeholder if no photo
         doc.setFillColor(240, 240, 240);
         doc.roundedRect(x, y, w, h, 2, 2, 'F');
         doc.setDrawColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
@@ -366,6 +428,16 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
     doc.setLineWidth(0.3);
     doc.rect(baseX, baseY, width, height, 'S');
 
+    // Load user photo if available
+    let userPhotoUrl: string | null = null;
+    if (user.avatar) {
+      try {
+        userPhotoUrl = user.avatar;
+      } catch {
+        userPhotoUrl = null;
+      }
+    }
+
     // Render elements
     for (const element of elements.filter(e => e.enabled)) {
       const x = baseX + (element.x - element.width / 2) * width / 100;
@@ -374,7 +446,14 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
       const h = element.height * height / 100;
 
       if (element.type === 'shape') {
-        const color = element.style.backgroundColor === 'primary' ? primaryRgb : secondaryRgb;
+        let color = primaryRgb;
+        if (element.id === 'header-bar') {
+          color = hexToRgb(config.headerBgColor);
+        } else if (element.id === 'footer-bar') {
+          color = hexToRgb(config.footerBgColor);
+        } else if (element.style.backgroundColor === 'secondary') {
+          color = secondaryRgb;
+        }
         doc.setFillColor(color.r, color.g, color.b);
         doc.rect(x, y, w, h, 'F');
       }
@@ -388,9 +467,16 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
         content = content.replace('{{pais}}', user.country || '');
         content = content.replace('{{id}}', `ID-${user.id.substring(0, 8).toUpperCase()}`);
 
-        const isWhite = element.style.color === 'white';
-        if (isWhite) doc.setTextColor(255, 255, 255);
-        else doc.setTextColor(textRgb.r, textRgb.g, textRgb.b);
+        let currentTextColor = textRgb;
+        if (element.id === 'participant-name') {
+          currentTextColor = hexToRgb(config.nameColor);
+        } else if (element.id === 'role-badge') {
+          currentTextColor = hexToRgb(config.roleColor);
+        } else if (element.id === 'affiliation') {
+          currentTextColor = hexToRgb(config.affiliationColor);
+        }
+        
+        doc.setTextColor(currentTextColor.r, currentTextColor.g, currentTextColor.b);
 
         doc.setFontSize(element.style.fontSize || 10);
         doc.setFont('helvetica', element.style.fontWeight === 'bold' ? 'bold' : 'normal');
@@ -398,10 +484,11 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
         const textX = baseX + element.x * width / 100;
         const textY = baseY + element.y * height / 100;
 
-        if (element.id === 'role-badge' && element.style.backgroundColor === 'secondary') {
+        if (element.id === 'role-badge') {
           const roleText = getRoleLabel(user.role);
           const textWidth = doc.getTextWidth(roleText) + 4;
-          doc.setFillColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
+          const roleColor = hexToRgb(config.roleColor);
+          doc.setFillColor(roleColor.r, roleColor.g, roleColor.b);
           doc.roundedRect(textX - textWidth / 2, textY - 3, textWidth, 5, 1, 1, 'F');
           doc.setTextColor(255, 255, 255);
           content = roleText;
@@ -412,6 +499,17 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
       }
 
       if (element.type === 'photo') {
+        if (userPhotoUrl) {
+          try {
+            const imgData = await loadImageAsBase64(userPhotoUrl);
+            if (imgData) {
+              doc.addImage(imgData, 'PNG', x, y, w, h);
+              continue;
+            }
+          } catch {
+            // Fall through to placeholder
+          }
+        }
         doc.setFillColor(240, 240, 240);
         doc.roundedRect(x, y, w, h, 2, 2, 'F');
         doc.setDrawColor(secondaryRgb.r, secondaryRgb.g, secondaryRgb.b);
@@ -590,6 +688,101 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
             </CardContent>
           </Card>
 
+          {/* Text Colors */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Textos y Colores</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Color Barra Superior</Label>
+                  <div className="flex gap-1 items-center">
+                    <Input
+                      type="color"
+                      value={config.headerBgColor}
+                      onChange={(e) => { setConfig({ ...config, headerBgColor: e.target.value }); setIsSaved(false); }}
+                      className="w-8 h-6 p-0.5 cursor-pointer"
+                    />
+                    <Input
+                      value={config.headerBgColor}
+                      onChange={(e) => { setConfig({ ...config, headerBgColor: e.target.value }); setIsSaved(false); }}
+                      className="flex-1 h-6 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs">Color Barra Inferior</Label>
+                  <div className="flex gap-1 items-center">
+                    <Input
+                      type="color"
+                      value={config.footerBgColor}
+                      onChange={(e) => { setConfig({ ...config, footerBgColor: e.target.value }); setIsSaved(false); }}
+                      className="w-8 h-6 p-0.5 cursor-pointer"
+                    />
+                    <Input
+                      value={config.footerBgColor}
+                      onChange={(e) => { setConfig({ ...config, footerBgColor: e.target.value }); setIsSaved(false); }}
+                      className="flex-1 h-6 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs">Color Nombre</Label>
+                  <div className="flex gap-1 items-center">
+                    <Input
+                      type="color"
+                      value={config.nameColor}
+                      onChange={(e) => { setConfig({ ...config, nameColor: e.target.value }); setIsSaved(false); }}
+                      className="w-8 h-6 p-0.5 cursor-pointer"
+                    />
+                    <Input
+                      value={config.nameColor}
+                      onChange={(e) => { setConfig({ ...config, nameColor: e.target.value }); setIsSaved(false); }}
+                      className="flex-1 h-6 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs">Color Rol</Label>
+                  <div className="flex gap-1 items-center">
+                    <Input
+                      type="color"
+                      value={config.roleColor}
+                      onChange={(e) => { setConfig({ ...config, roleColor: e.target.value }); setIsSaved(false); }}
+                      className="w-8 h-6 p-0.5 cursor-pointer"
+                    />
+                    <Input
+                      value={config.roleColor}
+                      onChange={(e) => { setConfig({ ...config, roleColor: e.target.value }); setIsSaved(false); }}
+                      className="flex-1 h-6 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs">Color Afiliación</Label>
+                  <div className="flex gap-1 items-center">
+                    <Input
+                      type="color"
+                      value={config.affiliationColor}
+                      onChange={(e) => { setConfig({ ...config, affiliationColor: e.target.value }); setIsSaved(false); }}
+                      className="w-8 h-6 p-0.5 cursor-pointer"
+                    />
+                    <Input
+                      value={config.affiliationColor}
+                      onChange={(e) => { setConfig({ ...config, affiliationColor: e.target.value }); setIsSaved(false); }}
+                      className="flex-1 h-6 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Elements Panel */}
           <ElementsPanel
             elements={elements}
@@ -622,6 +815,15 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
                   previewData={previewData}
                   device={previewDevice}
                   interactive={true}
+                  colorOverrides={{
+                    'participant-name': config.nameColor,
+                    'role-badge': config.roleColor,
+                    'affiliation': config.affiliationColor,
+                  }}
+                  bgColorOverrides={{
+                    'header-bar': config.headerBgColor,
+                    'footer-bar': config.footerBgColor,
+                  }}
                 />
               </div>
             </CardContent>
@@ -630,71 +832,82 @@ export function CredentialsManager({ event }: CredentialsManagerProps) {
       </div>
 
       {/* Generate Section */}
-      <Card>
-        <CardHeader>
+      <Card className="border-2">
+        <CardHeader className="bg-muted/50 border-b">
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Generar Credenciales</CardTitle>
-              <CardDescription>{eligibleUsers.length} usuarios disponibles</CardDescription>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <QrCode className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Generar Credenciales</CardTitle>
+                <CardDescription>{eligibleUsers.length} usuarios disponibles</CardDescription>
+              </div>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={handleSelectAll}>
                 {selectedUsers.length === eligibleUsers.length ? 'Deseleccionar' : 'Seleccionar'} todos
               </Button>
-              <Badge variant="secondary">{selectedUsers.length} seleccionados</Badge>
+              <Badge variant="secondary" className="text-sm px-3 py-1">{selectedUsers.length} seleccionados</Badge>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4">
           {eligibleUsers.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No hay usuarios registrados para este evento</p>
             </div>
           ) : (
-            <ScrollArea className="h-[250px]">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                {eligibleUsers.map((user) => (
-                  <div
-                    key={user.id}
-                    className={cn(
-                      "flex items-center gap-2 p-2 rounded-lg border transition-colors cursor-pointer",
-                      selectedUsers.includes(user.id) ? "bg-primary/5 border-primary" : "hover:bg-muted/50"
-                    )}
-                    onClick={() => handleToggleUser(user.id)}
-                  >
-                    <Checkbox checked={selectedUsers.includes(user.id)} />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{user.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                    </div>
-                    <Badge variant="outline" className="shrink-0 text-xs">{user.role}</Badge>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0"
-                      onClick={(e) => { e.stopPropagation(); handleGenerateSingle(user); }}
+            <>
+              <ScrollArea className="h-[300px] rounded-lg border bg-card">
+                <div className="p-3 space-y-2">
+                  {eligibleUsers.map((user) => (
+                    <div
+                      key={user.id}
+                      className={cn(
+                        "flex items-center gap-3 p-3 rounded-lg border-2 transition-all cursor-pointer",
+                        selectedUsers.includes(user.id) 
+                          ? "bg-primary/10 border-primary shadow-sm" 
+                          : "bg-background hover:bg-muted/50 border-border"
+                      )}
+                      onClick={() => handleToggleUser(user.id)}
                     >
-                      <Download className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          )}
+                      <Checkbox checked={selectedUsers.includes(user.id)} className="shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm truncate">{user.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                      </div>
+                      <Badge variant="outline" className="shrink-0 text-xs">{getRoleLabel(user.role)}</Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 h-8 gap-1.5"
+                        onClick={(e) => { e.stopPropagation(); handleGenerateSingle(user); }}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">PDF</span>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
 
-          <div className="flex gap-4 mt-4">
-            <Button
-              className="flex-1"
-              size="lg"
-              variant="hero"
-              onClick={handleExportAll}
-              disabled={selectedUsers.length === 0 || isExporting}
-            >
-              <FileDown className="h-5 w-5 mr-2" />
-              {isExporting ? 'Exportando...' : `Exportar ${selectedUsers.length} Credenciales (PDF único)`}
-            </Button>
-          </div>
+              <div className="mt-4 pt-4 border-t flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Selecciona usuarios y exporta las credenciales
+                </p>
+                <Button
+                  variant="hero"
+                  onClick={handleExportAll}
+                  disabled={selectedUsers.length === 0 || isExporting}
+                >
+                  <FileDown className="h-4 w-4 mr-2" />
+                  {isExporting ? 'Exportando...' : `Exportar ${selectedUsers.length} Credenciales`}
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

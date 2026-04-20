@@ -1,21 +1,37 @@
 <!doctype html>
-<html lang="en">
+<html lang="es" class="no-transitions">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- TODO: Set the document title to the name of your application -->
-    <title>SGE App</title>
-    <meta name="description" content="SGE Generated Project" />
+    <title>SGE - Sistema de Gestión de Eventos</title>
+    <meta name="description" content="Sistema de Gestión de Eventos" />
     <meta name="author" content="SGE" />
 
-    <!-- TODO: Update og:title to match your application name -->
-    <meta property="og:title" content="SGE App" />
-    <meta property="og:description" content="SGE Generated Project" />
+    <meta property="og:title" content="SGE - Sistema de Gestión de Eventos" />
+    <meta property="og:description" content="Sistema de Gestión de Eventos" />
     <meta property="og:type" content="website" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@SGE" />
     <meta name="twitter:image" content="https://SGE.dev/opengraph-image-p98pqg.png" />
+    
+    <!-- Theme initialization script - prevents flash of wrong theme -->
+    <script>
+      (function() {
+        var theme = localStorage.getItem('sge_theme');
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var isDark = theme === 'dark' || (theme !== 'light' && prefersDark);
+        
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+        }
+        
+        // Remove the class after React loads to enable transitions
+        requestAnimationFrame(function() {
+          document.documentElement.classList.remove('no-transitions');
+        });
+      })();
+    </script>
   </head>
 
   <body>

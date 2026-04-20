@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,10 +11,12 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { db, Event, MacroEvent, EventSession, FormField, SessionAttendance } from '@/lib/database';
+import { db, Event, MacroEvent, EventSession, FormField, SessionAttendance, SubEvento } from '@/lib/database';
+import { normalizeText, isDuplicate } from '@/lib/utils';
 import {
-  Plus, Calendar, Users, FileText, Edit, Trash2, Settings2, Mail, Image, Palette,
-  ArrowLeft, Wand2, Award, IdCard, Search, Eye, Clock, CheckSquare, Layers, CalendarDays, ChevronRight, Filter
+  Plus, Calendar, Users, FileText, Pencil, Trash2, Settings2, Mail, Image, Palette,
+  ArrowLeft, Wand2, Award, IdCard, Search, Eye, Clock, CheckSquare, Layers, CalendarDays, ChevronRight, Filter,
+  Hotel, Ticket, MapPin
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -24,7 +28,9 @@ import { JuryAssignment } from '@/components/JuryAssignment';
 import { CertificateManager } from '@/components/CertificateManager';
 import { CredentialsManager } from '@/components/CredentialsManager';
 import EventContentEditor from '@/components/EventContentEditor';
+import { SubEventoFormModal } from '@/components/SubEventos/SubEventoFormModal';
 import { toast } from 'sonner';
+import { ConfirmationDialog, SuccessDialog } from '@/components/ui/ConfirmationDialog';
 
 type ViewMode = 'list' | 'macro-detail' | 'event-detail' | 'form-builder' | 'email-templates' | 'jury-assignment' | 'certificates' | 'credentials' | 'attendance';
 
@@ -46,6 +52,8 @@ const defaultRegistrationFields = [
 ];
 
 export default function Events() {
+  const { user: currentUser, isSuperAdmin, isAdmin, isAdminReceptivo, isAdminEmpresa, isCoordinadorHotel, isLector } = useAuth();
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedMacro, setSelectedMacro] = useState<MacroEvent | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -54,12 +62,13 @@ export default function Events() {
   const [macroEvents, setMacroEvents] = useState<MacroEvent[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [sessions, setSessions] = useState<EventSession[]>([]);
+  const [subEventos, setSubEventos] = useState<SubEvento[]>([]);
 
   // Dialogs
-  const [isMacroDialogOpen, setIsMacroDialogOpen] = useState(false);
-  const [editingMacro, setEditingMacro] = useState<MacroEvent | null>(null);
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [isSubeventoModalOpen, setIsSubeventoModalOpen] = useState(false);
+  const [editingSubeventoId, setEditingSubeventoId] = useState<string | null>(null);
   const [isSessionDialogOpen, setIsSessionDialogOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<EventSession | null>(null);
 
@@ -68,18 +77,24 @@ export default function Events() {
   const [eventSearch, setEventSearch] = useState('');
 
   // Forms
-  const [macroForm, setMacroForm] = useState({
-    name: '', acronym: '', description: '', startDate: '', endDate: '', logoUrl: '',
-    content: '', bannerImageUrl: '', backgroundImageUrl: '', registrationFields: [] as any[],
-    primaryColor: '#1e40af', secondaryColor: '#059669', backgroundColor: '#f0f9ff',
-  });
   const [eventForm, setEventForm] = useState({
     name: '', nameEn: '', description: '', macroEventId: '',
     bannerImageUrl: '', backgroundImageUrl: '',
   });
   const [sessionForm, setSessionForm] = useState({ eventId: '', date: '', startTime: '', endTime: '' });
   const [activeEventTab, setActiveEventTab] = useState('basic');
-  const [activeMacroTab, setActiveMacroTab] = useState('basic');
+  const [activeDetailTab, setActiveDetailTab] = useState('info');
+
+  // Asignacion dialogs
+  const [isHotelDialogOpen, setIsHotelDialogOpen] = useState(false);
+  const [isSalonDialogOpen, setIsSalonDialogOpen] = useState(false);
+  const [isActividadDialogOpen, setIsActividadDialogOpen] = useState(false);
+  const [selectedHotelId, setSelectedHotelId] = useState('');
+  const [selectedSalonIds, setSelectedSalonIds] = useState<string[]>([]);
+  const [actividadForm, setActividadForm] = useState({
+    nombre: '', descripcion: '', fecha: '', precio: 0, moneda: 'USD',
+    incluyeTransporte: false, incluyeComida: false, capacidad: 0, lugar: '',
+  });
 
   // Sub-views
   const [formBuilderType] = useState<'event'>('event');
@@ -88,90 +103,67 @@ export default function Events() {
 
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { 
+    loadAll(); 
+    
+    const handleDataChange = () => {
+      loadAll();
+    };
+    
+    window.addEventListener('sge-data-change', handleDataChange);
+    return () => window.removeEventListener('sge-data-change', handleDataChange);
+  }, [currentUser?.id]);
 
   const loadAll = () => {
-    setMacroEvents(db.macroEvents.getAll());
-    setEvents(db.events.getAll());
+    let allMacros = db.macroEvents.getAll();
+    let allEvents = db.events.getAll();
+
+    // Data isolation per permission matrix
+    if (currentUser) {
+      if (currentUser.role === 'ADMIN_RECEPTIVO' || currentUser.role === 'LECTOR_RECEPTIVO') {
+        allMacros = allMacros.filter(me => !(me as any).receptivoId || (me as any).receptivoId === currentUser.receptivoId);
+        allEvents = allEvents.filter(e => {
+          const macro = allMacros.find(m => m.id === e.macroEventId);
+          return !!macro;
+        });
+      } else if (currentUser.role === 'ADMIN_EMPRESA' || currentUser.role === 'LECTOR_EMPRESA') {
+        allMacros = allMacros.filter(me => !(me as any).empresaId || (me as any).empresaId === currentUser.empresaId);
+        allEvents = allEvents.filter(e => {
+          const macro = allMacros.find(m => m.id === e.macroEventId);
+          return !!macro;
+        });
+      }
+      // COORDINADOR_HOTEL ve todos los eventos (como SuperAdmin)
+    }
+
+    setMacroEvents(allMacros);
+    setEvents(allEvents);
     setSessions(db.eventSessions.getAll());
+    setSubEventos(db.subEventos.getAll());
     setIsLoading(false);
   };
 
+  const canEdit = !isLector && !isCoordinadorHotel;
+  const canCreate = isSuperAdmin || isAdmin || isAdminReceptivo || isAdminEmpresa || isCoordinadorHotel;
+
   // ===== MACRO EVENT HANDLERS =====
-  const openCreateMacro = () => {
-    setEditingMacro(null);
-    setMacroForm({ 
-      name: '', acronym: '', description: '', startDate: '', endDate: '', logoUrl: '', 
-      content: '', bannerImageUrl: '', backgroundImageUrl: '', registrationFields: [],
-      primaryColor: '#1e40af', secondaryColor: '#059669', backgroundColor: '#f0f9ff' 
+
+  const handleDeleteMacro = async (me: MacroEvent) => {
+    if (me.isActive) { toast.error('Solo se puede eliminar eventos inactivos'); return; }
+    const confirmed = await ConfirmationDialog.show({
+      title: 'Eliminar Evento',
+      description: '¿Está seguro de que desea eliminar este evento? Esta acción no se puede deshacer.',
+      variant: 'danger',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar',
     });
-    setActiveMacroTab('basic');
-    setIsMacroDialogOpen(true);
-  };
-
-  const openEditMacro = (me: MacroEvent) => {
-    setEditingMacro(me);
-    setMacroForm({
-      name: me.name, acronym: me.acronym, description: me.description,
-      startDate: me.startDate, endDate: me.endDate, logoUrl: me.logoUrl || '',
-      bannerImageUrl: (me as any).bannerImageUrl || '',
-      backgroundImageUrl: (me as any).backgroundImageUrl || '',
-      content: (me as any).content || '',
-      registrationFields: (me as any).registrationFields || (me as any).formFields || [],
-      primaryColor: (me as any).primaryColor || '#1e40af',
-      secondaryColor: (me as any).secondaryColor || '#059669',
-      backgroundColor: (me as any).backgroundColor || '#f0f9ff',
-    });
-    setActiveMacroTab('basic');
-    setIsMacroDialogOpen(true);
-  };
-
-  const handleSaveMacro = () => {
-    if (!macroForm.name || !macroForm.acronym || !macroForm.startDate || !macroForm.endDate) {
-      toast.error('Completa los campos obligatorios'); return;
-    }
-    if (new Date(macroForm.endDate) < new Date(macroForm.startDate)) {
-      toast.error('La fecha de fin no puede ser anterior a la de inicio'); return;
-    }
-    try {
-      if (editingMacro) {
-        db.macroEvents.update(editingMacro.id, macroForm as any);
-        // Propagate relevant macro fields to all simple events belonging to this macro
-        const relatedEvents = events.filter(e => e.macroEventId === editingMacro.id);
-        relatedEvents.forEach(ev => {
-          const updateData: any = {
-            bannerImageUrl: macroForm.bannerImageUrl,
-            backgroundImageUrl: macroForm.backgroundImageUrl,
-            logoUrl: macroForm.logoUrl,
-            primaryColor: macroForm.primaryColor,
-            secondaryColor: macroForm.secondaryColor,
-            backgroundColor: macroForm.backgroundColor,
-            startDate: macroForm.startDate,
-            endDate: macroForm.endDate,
-          };
-          db.events.update(ev.id, updateData);
-          if (macroForm.registrationFields) db.events.updateFormFields(ev.id, macroForm.registrationFields as any);
-        });
-        toast.success('Macro evento actualizado');
-      } else {
-        db.macroEvents.create({ ...macroForm, isActive: false });
-        toast.success('Macro evento creado (estado: Inactivo)');
-      }
-      setIsMacroDialogOpen(false);
-      loadAll();
-      if (editingMacro && selectedMacro?.id === editingMacro.id) {
-        setSelectedMacro(db.macroEvents.getById(editingMacro.id) || null);
-      }
-    } catch (e: any) {
-      toast.error(e.message || 'Error al guardar');
-    }
-  };
-
-  const handleDeleteMacro = (me: MacroEvent) => {
-    if (me.isActive) { toast.error('Solo se puede eliminar macro eventos inactivos'); return; }
-    if (confirm('¿Eliminar este macro evento?')) {
+    if (confirmed) {
       db.macroEvents.delete(me.id);
-      toast.success('Macro evento eliminado');
+      await SuccessDialog.show({
+        title: '¡Eliminado!',
+        description: 'Evento eliminado correctamente.',
+        autoClose: 2000,
+      });
       loadAll();
     }
   };
@@ -208,7 +200,15 @@ export default function Events() {
       toast.error('Completa los campos obligatorios'); return;
     }
     const macro = db.macroEvents.getById(eventForm.macroEventId);
-    if (!macro) { toast.error('Macro evento no encontrado'); return; }
+    if (!macro) { toast.error('Evento no encontrado'); return; }
+
+    const eventosDelMacro = db.events.getAll().filter(e => e.macroEventId === eventForm.macroEventId);
+    const duplicado = eventosDelMacro.find(e => normalizeText(e.name) === normalizeText(eventForm.name) && (!editingEvent || e.id !== editingEvent.id));
+    if (duplicado) {
+      toast.error(`Ya existe un Sub Evento con el nombre "${duplicado.name}" en este evento`);
+      return;
+    }
+
     try {
       const colors = {
         primaryColor: (macro as any).primaryColor || '#1e40af',
@@ -217,10 +217,10 @@ export default function Events() {
       };
       if (editingEvent) {
         db.events.update(editingEvent.id, { ...eventForm, ...colors, startDate: macro.startDate, endDate: macro.endDate });
-        toast.success('Evento simple actualizado');
+        toast.success('Sub Evento actualizado');
       } else {
         db.events.create({ ...eventForm, ...colors, isActive: false, createdBy: '4', startDate: macro.startDate, endDate: macro.endDate } as any);
-        toast.success('Evento simple creado (estado: Inactivo)');
+        toast.success('Sub Evento creado (estado: Inactivo)');
       }
       setIsEventDialogOpen(false);
       loadAll();
@@ -228,9 +228,24 @@ export default function Events() {
     } catch (e: any) { toast.error(e.message || 'Error al guardar'); }
   };
 
-  const handleDeleteEvent = (event: Event) => {
+  const handleDeleteEvent = async (event: Event) => {
     if (event.isActive) { toast.error('Solo se puede eliminar eventos inactivos'); return; }
-    if (confirm('¿Eliminar este evento simple?')) { db.events.delete(event.id); toast.success('Evento eliminado'); loadAll(); }
+    const confirmed = await ConfirmationDialog.show({
+      title: 'Eliminar Sub Evento',
+      description: '¿Está seguro de que desea eliminar este Sub Evento? Esta acción no se puede deshacer.',
+      variant: 'danger',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar',
+    });
+    if (confirmed) {
+      db.events.delete(event.id);
+      await SuccessDialog.show({
+        title: '¡Eliminado!',
+        description: 'Sub Evento eliminado correctamente.',
+        autoClose: 2000,
+      });
+      loadAll();
+    }
   };
 
   const toggleEventStatus = (event: Event) => {
@@ -267,7 +282,7 @@ export default function Events() {
       const macro = db.macroEvents.getById(event.macroEventId);
       if (macro) {
         const sD = new Date(sessionForm.date), mS = new Date(macro.startDate.split('T')[0]), mE = new Date(macro.endDate.split('T')[0]);
-        if (sD < mS || sD > mE) { toast.error('La fecha de la sesión debe estar dentro del rango del macro evento'); return; }
+        if (sD < mS || sD > mE) { toast.error('La fecha de la sesión debe estar dentro del rango del Evento'); return; }
       }
     }
     try {
@@ -278,8 +293,23 @@ export default function Events() {
     } catch (e: any) { toast.error(e.message || 'Error'); }
   };
 
-  const handleDeleteSession = (session: EventSession) => {
-    if (confirm('¿Eliminar esta sesión?')) { db.eventSessions.delete(session.id); toast.success('Sesión eliminada'); loadAll(); }
+  const handleDeleteSession = async (session: EventSession) => {
+    const confirmed = await ConfirmationDialog.show({
+      title: 'Eliminar Sesión',
+      description: '¿Está seguro de que desea eliminar esta sesión? Esta acción no se puede deshacer.',
+      variant: 'danger',
+      confirmText: 'Eliminar',
+      cancelText: 'Cancelar',
+    });
+    if (confirmed) {
+      db.eventSessions.delete(session.id);
+      await SuccessDialog.show({
+        title: '¡Eliminado!',
+        description: 'Sesión eliminada correctamente.',
+        autoClose: 2000,
+      });
+      loadAll();
+    }
   };
 
   // ===== ATTENDANCE =====
@@ -316,17 +346,11 @@ export default function Events() {
   const openCredentials = () => { setViewMode('credentials'); };
 
   const handleSaveFormFields = (fields: FormField[]) => {
-    const macroToUse = editingMacro || selectedMacro;
-    if (macroToUse) {
-      // Save form fields to all events of this macro
-      const macroEventsList = events.filter(e => e.macroEventId === macroToUse.id);
+    if (selectedMacro) {
+      const macroEventsList = events.filter(e => e.macroEventId === selectedMacro.id);
       macroEventsList.forEach(ev => db.events.updateFormFields(ev.id, fields));
-      // Also save to macro event as registrationFields
-      db.macroEvents.update(macroToUse.id, { registrationFields: fields } as any);
+      db.macroEvents.update(selectedMacro.id, { registrationFields: fields } as any);
       loadAll();
-    } else {
-      // If no macro selected (editing new macro), just update local state
-      setMacroForm(prev => ({ ...prev, registrationFields: fields }));
     }
   };
 
@@ -372,7 +396,7 @@ export default function Events() {
   // ===== BREADCRUMB =====
   const Breadcrumb = () => (
     <div className="flex items-center gap-1 text-sm text-muted-foreground mb-4">
-      <button onClick={goBackToList} className="hover:text-foreground transition-colors">Macro Eventos</button>
+      <button onClick={goBackToList} className="hover:text-foreground transition-colors">Eventos</button>
       {selectedMacro && (
         <>
           <ChevronRight className="h-3 w-3" />
@@ -395,84 +419,12 @@ export default function Events() {
   // ===== ALL DIALOGS =====
   const renderDialogs = () => (
     <>
-      {/* MACRO EVENT DIALOG */}
-      <Dialog open={isMacroDialogOpen} onOpenChange={setIsMacroDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingMacro ? 'Editar Macro Evento' : 'Crear Macro Evento'}</DialogTitle>
-            <DialogDescription>Contenedor principal que agrupa eventos simples</DialogDescription>
-          </DialogHeader>
-          <Tabs value={activeMacroTab} onValueChange={setActiveMacroTab}>
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="basic"><FileText className="h-4 w-4 mr-1" />Información</TabsTrigger>
-              <TabsTrigger value="content"><Settings2 className="h-4 w-4 mr-1" />Contenidos</TabsTrigger>
-              <TabsTrigger value="images"><Image className="h-4 w-4 mr-1" />Imágenes</TabsTrigger>
-              <TabsTrigger value="logotipo"><Image className="h-4 w-4 mr-1" />Logotipo</TabsTrigger>
-              <TabsTrigger value="colors"><Palette className="h-4 w-4 mr-1" />Colores</TabsTrigger>
-            </TabsList>
-            <TabsContent value="basic" className="space-y-4 mt-4">
-              <div className="space-y-2"><Label>Nombre *</Label><Input value={macroForm.name} onChange={e => setMacroForm({ ...macroForm, name: e.target.value })} /></div>
-              <div className="space-y-2"><Label>Siglas (único) *</Label><Input value={macroForm.acronym} onChange={e => setMacroForm({ ...macroForm, acronym: e.target.value })} placeholder="Ej: CIB2024" /></div>
-              <div className="space-y-2"><Label>Descripción</Label><Textarea value={macroForm.description} onChange={e => setMacroForm({ ...macroForm, description: e.target.value })} rows={3} /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>Fecha/Hora Inicio *</Label><Input type="datetime-local" value={macroForm.startDate} onChange={e => setMacroForm({ ...macroForm, startDate: e.target.value })} /></div>
-                <div className="space-y-2"><Label>Fecha/Hora Fin *</Label><Input type="datetime-local" value={macroForm.endDate} onChange={e => setMacroForm({ ...macroForm, endDate: e.target.value })} /></div>
-              </div>
-            </TabsContent>
-            <TabsContent value="content" className="mt-4">
-              <EventContentEditor
-                content={macroForm.content || ''}
-                onChange={content => setMacroForm({ ...macroForm, content })}
-              />
-            </TabsContent>
-            <TabsContent value="images" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label>Banner del Evento</Label>
-                <ImageUploader value={macroForm.bannerImageUrl} onChange={url => setMacroForm({ ...macroForm, bannerImageUrl: url })} aspectRatio="banner" placeholder="Subir banner" />
-              </div>
-              <div className="space-y-2">
-                <Label>Imagen de Fondo</Label>
-                <ImageUploader value={macroForm.backgroundImageUrl} onChange={url => setMacroForm({ ...macroForm, backgroundImageUrl: url })} aspectRatio="banner" placeholder="Subir imagen de fondo" />
-              </div>
-            </TabsContent>
-            <TabsContent value="logotipo" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label>Logotipo</Label>
-                <ImageUploader value={macroForm.logoUrl} onChange={url => setMacroForm({ ...macroForm, logoUrl: url })} aspectRatio="square" placeholder="Subir logotipo" />
-              </div>
-            </TabsContent>
-            <TabsContent value="colors" className="space-y-4 mt-4">
-              <div className="grid grid-cols-3 gap-4">
-                {(['primaryColor', 'secondaryColor', 'backgroundColor'] as const).map(key => (
-                  <div key={key} className="space-y-2">
-                    <Label>{key === 'primaryColor' ? 'Color Primario' : key === 'secondaryColor' ? 'Color Secundario' : 'Color de Fondo'}</Label>
-                    <div className="flex gap-2">
-                      <Input type="color" value={macroForm[key]} onChange={e => setMacroForm({ ...macroForm, [key]: e.target.value })} className="w-12 h-10 p-1 cursor-pointer" />
-                      <Input value={macroForm[key]} onChange={e => setMacroForm({ ...macroForm, [key]: e.target.value })} className="flex-1" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 rounded-lg overflow-hidden h-24" style={{ backgroundColor: macroForm.backgroundColor }}>
-                <div className="h-12 flex items-center justify-center text-white font-semibold" style={{ background: `linear-gradient(135deg, ${macroForm.primaryColor}, ${macroForm.secondaryColor})` }}>
-                  {macroForm.name || 'Vista previa'}
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsMacroDialogOpen(false)}>Cancelar</Button>
-            <Button variant="hero" onClick={handleSaveMacro}>{editingMacro ? 'Actualizar' : 'Crear'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* SIMPLE EVENT DIALOG */}
       <Dialog open={isEventDialogOpen} onOpenChange={setIsEventDialogOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingEvent ? 'Editar Evento Simple' : 'Crear Evento Simple'}</DialogTitle>
-            <DialogDescription>Actividad concreta asociada a un macro evento</DialogDescription>
+            <DialogTitle>{editingEvent ? 'Editar Sub Evento' : 'Crear Sub Evento'}</DialogTitle>
+            <DialogDescription>Sub Evento o componente del Evento principal</DialogDescription>
           </DialogHeader>
           {/* Solo información básica y descripción simple */}
           <div className="space-y-4 mt-4">
@@ -480,12 +432,12 @@ export default function Events() {
             <div className="space-y-2"><Label>Nombre en Inglés</Label><Input value={eventForm.nameEn} onChange={e => setEventForm({ ...eventForm, nameEn: e.target.value })} /></div>
             <div className="space-y-2">
               <Label>Descripción General</Label>
-              <Textarea value={eventForm.description} onChange={e => setEventForm({ ...eventForm, description: e.target.value })} rows={3} placeholder="Descripción general del evento simple..." />
+              <Textarea value={eventForm.description} onChange={e => setEventForm({ ...eventForm, description: e.target.value })} rows={3} placeholder="Descripción general del Sub Evento..." />
             </div>
             <div className="space-y-2">
-              <Label>Macro Evento Asociado *</Label>
+              <Label>Evento *</Label>
               <Select value={eventForm.macroEventId} onValueChange={v => setEventForm({ ...eventForm, macroEventId: v })}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar macro evento" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Seleccionar evento padre" /></SelectTrigger>
                 <SelectContent>
                   {macroEvents.filter(me => me.isActive).map(me => (
                     <SelectItem key={me.id} value={me.id}>{me.name} ({me.acronym})</SelectItem>
@@ -506,11 +458,11 @@ export default function Events() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{editingSession ? 'Editar Sesión' : 'Crear Sesión'}</DialogTitle>
-            <DialogDescription>Ocurrencia temporal de un evento simple</DialogDescription>
+            <DialogDescription>Sesión o ocurrencia temporal del Sub Evento</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Evento Simple *</Label>
+              <Label>Sub Evento *</Label>
               <Select value={sessionForm.eventId} onValueChange={v => setSessionForm({ ...sessionForm, eventId: v })} disabled={!!editingSession || !!selectedEvent}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar evento" /></SelectTrigger>
                 <SelectContent>
@@ -530,6 +482,200 @@ export default function Events() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ASIGNAR HOTEL DIALOG */}
+      <Dialog open={isHotelDialogOpen} onOpenChange={setIsHotelDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Asignar Hotel</DialogTitle>
+            <DialogDescription>Seleccione un hotel para este evento</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 max-h-[400px] overflow-y-auto">
+            {db.nomHoteles.getAll().filter(h => h.activo && !db.eventoHoteles.getByEvento(selectedMacro?.id || '').some(eh => eh.hotelId === h.id)).length === 0 ? (
+              <p className="text-center py-8 text-muted-foreground">Todos los hoteles disponibles ya están asignados</p>
+            ) : (
+              db.nomHoteles.getAll().filter(h => h.activo && !db.eventoHoteles.getByEvento(selectedMacro?.id || '').some(eh => eh.hotelId === h.id)).map(hotel => (
+                <div key={hotel.id} className="p-4 border rounded-lg cursor-pointer hover:bg-muted/50" onClick={() => {
+                  db.eventoHoteles.create({
+                    eventoId: selectedMacro?.id || '',
+                    hotelId: hotel.id,
+                    fechaCheckin: selectedMacro?.startDate || '',
+                    fechaCheckout: selectedMacro?.endDate || '',
+                  });
+                  setIsHotelDialogOpen(false);
+                  setSelectedMacro(db.macroEvents.getById(selectedMacro?.id || ''));
+                  toast.success('Hotel asignado');
+                }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{hotel.nombre}</p>
+                      <p className="text-sm text-muted-foreground">{hotel.ciudad}</p>
+                    </div>
+                    <Badge>{hotel.categoriaEstrellas} estrellas</Badge>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHotelDialogOpen(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ASIGNAR SALON DIALOG */}
+      <Dialog open={isSalonDialogOpen} onOpenChange={setIsSalonDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Asignar Salon</DialogTitle>
+            <DialogDescription>Seleccione salones disponibles</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 max-h-[400px] overflow-y-auto">
+            {db.salones.getAll().filter(s => s.estado === 'ACTIVO' && !db.eventoSalones.getByEvento(selectedMacro?.id || '').some(es => es.salonId === s.id)).length === 0 ? (
+              <p className="text-center py-8 text-muted-foreground">Todos los salones disponibles ya están asignados</p>
+            ) : (
+              db.salones.getAll().filter(s => s.estado === 'ACTIVO' && !db.eventoSalones.getByEvento(selectedMacro?.id || '').some(es => es.salonId === s.id)).map(salon => {
+                const hotel = db.nomHoteles.getById(salon.hotelId);
+                return (
+                  <div key={salon.id} className="p-4 border rounded-lg cursor-pointer hover:bg-muted/50" onClick={() => {
+                    db.eventoSalones.create({
+                      eventoId: selectedMacro?.id || '',
+                      salonId: salon.id,
+                      disponible: true,
+                    });
+                    setIsSalonDialogOpen(false);
+                    setSelectedMacro(db.macroEvents.getById(selectedMacro?.id || ''));
+                    toast.success('Salón asignado');
+                  }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{salon.nombre}</p>
+                        <p className="text-sm text-muted-foreground">{hotel?.nombre || 'Sin hotel'} - {salon.ubicacion}</p>
+                      </div>
+                      <Badge variant="outline">Cap: {salon.capacidadMaxima}</Badge>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSalonDialogOpen(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* NUEVA ACTIVIDAD SOCIAL DIALOG */}
+      <Dialog open={isActividadDialogOpen} onOpenChange={setIsActividadDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Nueva Actividad Social</DialogTitle>
+            <DialogDescription>Configure los datos de la actividad</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre *</Label>
+              <Input value={actividadForm.nombre} onChange={e => setActividadForm({ ...actividadForm, nombre: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Descripción</Label>
+              <Textarea value={actividadForm.descripcion} onChange={e => setActividadForm({ ...actividadForm, descripcion: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Fecha</Label>
+                <Input type="date" value={actividadForm.fecha} onChange={e => setActividadForm({ ...actividadForm, fecha: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Lugar</Label>
+                <Input value={actividadForm.lugar} onChange={e => setActividadForm({ ...actividadForm, lugar: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Precio</Label>
+                <Input type="number" value={actividadForm.precio} onChange={e => setActividadForm({ ...actividadForm, precio: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Moneda</Label>
+                <Select value={actividadForm.moneda} onValueChange={v => setActividadForm({ ...actividadForm, moneda: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="CUP">CUP</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Capacidad</Label>
+                <Input type="number" value={actividadForm.capacidad} onChange={e => setActividadForm({ ...actividadForm, capacidad: parseInt(e.target.value) || 0 })} />
+              </div>
+            </div>
+            <div className="flex gap-6">
+              <div className="flex items-center gap-2">
+                <Checkbox id="transporte" checked={actividadForm.incluyeTransporte} onCheckedChange={v => setActividadForm({ ...actividadForm, incluyeTransporte: !!v })} />
+                <Label htmlFor="transporte">Incluye Transporte</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox id="comida" checked={actividadForm.incluyeComida} onCheckedChange={v => setActividadForm({ ...actividadForm, incluyeComida: !!v })} />
+                <Label htmlFor="comida">Incluye Comida</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsActividadDialogOpen(false)}>Cancelar</Button>
+            <Button variant="hero" onClick={() => {
+              if (!actividadForm.nombre) { toast.error('El nombre es obligatorio'); return; }
+              db.actividadesSociales.create({
+                eventoId: selectedMacro?.id || '',
+                nombre: actividadForm.nombre,
+                descripcion: actividadForm.descripcion,
+                fecha: actividadForm.fecha,
+                horaInicio: '',
+                horaFin: '',
+                puntoEncuentro: actividadForm.lugar,
+                horaEncuentro: '',
+                destino: '',
+                direccionExacta: '',
+                esGratuita: false,
+                costo: {
+                  CUP: 0,
+                  moneda: actividadForm.precio,
+                  monedaSeleccionada: actividadForm.moneda as 'CUP' | 'USD' | 'EUR',
+                },
+                cupoMaximo: actividadForm.capacidad,
+                cupoMinimo: 0,
+                fechaLimiteReserva: '',
+                requiereTransporte: actividadForm.incluyeTransporte,
+                guiaIncluido: false,
+                imagenes: [],
+                estado: 'ACTIVO',
+              });
+              setIsActividadDialogOpen(false);
+              setActividadForm({ nombre: '', descripcion: '', fecha: '', precio: 0, moneda: 'USD', incluyeTransporte: false, incluyeComida: false, capacidad: 0, lugar: '' });
+              setSelectedMacro(db.macroEvents.getById(selectedMacro?.id || ''));
+              toast.success('Actividad creada');
+            }}>Crear</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Unificado de SubEventos - Componente Reutilizable */}
+      <SubEventoFormModal
+        isOpen={isSubeventoModalOpen}
+        onClose={() => {
+          setIsSubeventoModalOpen(false);
+          setEditingSubeventoId(null);
+        }}
+        onSuccess={() => {
+          loadAll();
+          setIsSubeventoModalOpen(false);
+          setEditingSubeventoId(null);
+        }}
+        evento={selectedMacro}
+        subeventoId={editingSubeventoId}
+      />
     </>
   );
 
@@ -625,7 +771,7 @@ export default function Events() {
             />
           ) : (
             <Card className="p-8 text-center text-muted-foreground">
-              Crea al menos un evento simple en este macro evento para configurar el formulario de inscripción.
+              Crea al menos un Sub Evento en este Evento para configurar el formulario de inscripción.
             </Card>
           )}
         </div>
@@ -644,7 +790,7 @@ export default function Events() {
             <div><h1 className="text-2xl font-display font-bold">Plantillas de Email</h1><p className="text-muted-foreground">{selectedMacro.name}</p></div>
             <Button variant="outline" onClick={goBackToMacroDetail}><ArrowLeft className="h-4 w-4 mr-2" />Volver</Button>
           </div>
-          {refEvent ? <EmailTemplateManager event={refEvent} /> : <Card className="p-8 text-center text-muted-foreground">Crea al menos un evento simple primero.</Card>}
+          {refEvent ? <EmailTemplateManager event={refEvent} /> : <Card className="p-8 text-center text-muted-foreground">Crea al menos un Sub Evento primero.</Card>}
         </div>
         {renderDialogs()}
       </DashboardLayout>
@@ -661,7 +807,7 @@ export default function Events() {
             <div><h1 className="text-2xl font-display font-bold">Asignación de Jurados</h1><p className="text-muted-foreground">{selectedMacro.name}</p></div>
             <Button variant="outline" onClick={goBackToMacroDetail}><ArrowLeft className="h-4 w-4 mr-2" />Volver</Button>
           </div>
-          {refEvent ? <JuryAssignment event={refEvent} /> : <Card className="p-8 text-center text-muted-foreground">Crea al menos un evento simple primero.</Card>}
+          {refEvent ? <JuryAssignment event={refEvent} /> : <Card className="p-8 text-center text-muted-foreground">Crea al menos un Sub Evento primero.</Card>}
         </div>
         {renderDialogs()}
       </DashboardLayout>
@@ -678,7 +824,7 @@ export default function Events() {
             <div><h1 className="text-2xl font-display font-bold">Gestión de Certificados</h1><p className="text-muted-foreground">{selectedMacro.name}</p></div>
             <Button variant="outline" onClick={goBackToMacroDetail}><ArrowLeft className="h-4 w-4 mr-2" />Volver</Button>
           </div>
-          {refEvent ? <CertificateManager event={refEvent} /> : <Card className="p-8 text-center text-muted-foreground">Crea al menos un evento simple primero.</Card>}
+          {refEvent ? <CertificateManager event={refEvent} /> : <Card className="p-8 text-center text-muted-foreground">Crea al menos un Sub Evento primero.</Card>}
         </div>
         {renderDialogs()}
       </DashboardLayout>
@@ -695,7 +841,7 @@ export default function Events() {
             <div><h1 className="text-2xl font-display font-bold">Gestión de Credenciales</h1><p className="text-muted-foreground">{selectedMacro.name}</p></div>
             <Button variant="outline" onClick={goBackToMacroDetail}><ArrowLeft className="h-4 w-4 mr-2" />Volver</Button>
           </div>
-          {refEvent ? <CredentialsManager event={refEvent} /> : <Card className="p-8 text-center text-muted-foreground">Crea al menos un evento simple primero.</Card>}
+          {refEvent ? <CredentialsManager event={refEvent} /> : <Card className="p-8 text-center text-muted-foreground">Crea al menos un Sub Evento primero.</Card>}
         </div>
         {renderDialogs()}
       </DashboardLayout>
@@ -716,7 +862,7 @@ export default function Events() {
               <p className="text-muted-foreground">{selectedEvent.nameEn} · {macro?.name || ''}</p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => openEditEvent(selectedEvent)}><Edit className="h-4 w-4 mr-2" />Editar</Button>
+              <Button variant="outline" onClick={() => openEditEvent(selectedEvent)}><Pencil className="h-4 w-4 mr-2" />Editar</Button>
               <Button variant="outline" onClick={goBackToMacroDetail}><ArrowLeft className="h-4 w-4 mr-2" />Volver</Button>
             </div>
           </div>
@@ -747,7 +893,7 @@ export default function Events() {
             </Card>
             <Card className="p-4 text-center">
               <p className="text-2xl font-bold" style={{ color: selectedEvent.primaryColor }}>■</p>
-              <p className="text-sm text-muted-foreground">Color (Macro)</p>
+              <p className="text-sm text-muted-foreground">Color Principal</p>
             </Card>
           </div>
 
@@ -787,7 +933,7 @@ export default function Events() {
                       <TableCell>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon" onClick={() => openAttendance(session)} title="Asistencia"><CheckSquare className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => openEditSession(session)} title="Editar"><Edit className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => openEditSession(session)} title="Editar"><Pencil className="h-4 w-4" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => handleDeleteSession(session)} title="Eliminar"><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </TableCell>
@@ -806,126 +952,154 @@ export default function Events() {
   // ===== MACRO DETAIL VIEW =====
   if (viewMode === 'macro-detail' && selectedMacro) {
     const macroEvts = filteredEvents(selectedMacro.id);
+    const refEvent = macroEvts[0];
+    
     return (
       <DashboardLayout>
-        <div className="space-y-6">
-          <Breadcrumb />
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-display font-bold">{selectedMacro.name}</h1>
               <p className="text-muted-foreground">
                 <Badge variant="outline" className="mr-2">{selectedMacro.acronym}</Badge>
                 {new Date(selectedMacro.startDate).toLocaleDateString('es-ES')} — {new Date(selectedMacro.endDate).toLocaleDateString('es-ES')}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => openEditMacro(selectedMacro)}><Edit className="h-4 w-4 mr-2" />Editar</Button>
-              <Button variant="outline" onClick={goBackToList}><ArrowLeft className="h-4 w-4 mr-2" />Volver</Button>
-            </div>
-          </div>
-
-          {/* Macro info summary */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <Card className="p-4 text-center">
-              <p className="text-2xl font-bold">{events.filter(e => e.macroEventId === selectedMacro.id).length}</p>
-              <p className="text-sm text-muted-foreground">Eventos Simples</p>
-            </Card>
-            <Card className="p-4 text-center">
-              <p className="text-2xl font-bold">{sessions.filter(s => events.filter(e => e.macroEventId === selectedMacro.id).some(e => e.id === s.eventId)).length}</p>
-              <p className="text-sm text-muted-foreground">Sesiones Totales</p>
-            </Card>
-            <Card className="p-4 text-center">
-              <div className="flex justify-center">
-                <Switch checked={selectedMacro.isActive} onCheckedChange={() => {
+                <Switch className="ml-4 inline-flex" checked={selectedMacro.isActive} onCheckedChange={() => {
                   toggleMacroStatus(selectedMacro);
                   const refreshed = db.macroEvents.getById(selectedMacro.id);
                   if (refreshed) setSelectedMacro(refreshed);
                 }} />
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">{selectedMacro.isActive ? 'Activo' : 'Inactivo'}</p>
-            </Card>
+                <span className="ml-2 text-sm">{selectedMacro.isActive ? 'Activo' : 'Inactivo'}</span>
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => navigate(`/events/wizard/${selectedMacro.id}`)}><Wand2 className="h-4 w-4 mr-2" />Editar en Wizard</Button>
+              <Button variant="outline" onClick={goBackToList}><ArrowLeft className="h-4 w-4 mr-2" />Volver</Button>
+            </div>
           </div>
 
-          {selectedMacro.description && (
-            <Card className="p-4"><p className="text-sm text-muted-foreground">{selectedMacro.description}</p></Card>
-          )}
+          <Tabs value={activeDetailTab} onValueChange={setActiveDetailTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="info"><FileText className="h-4 w-4 mr-1" />Info</TabsTrigger>
+              <TabsTrigger value="subeventos"><Layers className="h-4 w-4 mr-1" />Sub Eventos</TabsTrigger>
+              <TabsTrigger value="herramientas"><Settings2 className="h-4 w-4 mr-1" />Herramientas</TabsTrigger>
+            </TabsList>
 
-          {/* TOOLS - now at macro level */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Herramientas del Evento</CardTitle>
-              <CardDescription>Configuración compartida por todos los eventos simples de este macro evento</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                <Button variant="outline" className="flex flex-col h-auto py-4 gap-2" onClick={openFormBuilder}>
-                  <Settings2 className="h-5 w-5" /><span className="text-xs">Form. Inscripción</span>
-                </Button>
-                <Button variant="outline" className="flex flex-col h-auto py-4 gap-2" onClick={openEmailTemplates}>
-                  <Mail className="h-5 w-5" /><span className="text-xs">Emails</span>
-                </Button>
-                <Button variant="outline" className="flex flex-col h-auto py-4 gap-2" onClick={openJuryAssignment}>
-                  <Wand2 className="h-5 w-5" /><span className="text-xs">Jurados</span>
-                </Button>
-                <Button variant="outline" className="flex flex-col h-auto py-4 gap-2" onClick={openCertificates}>
-                  <Award className="h-5 w-5" /><span className="text-xs">Certificados</span>
-                </Button>
-                <Button variant="outline" className="flex flex-col h-auto py-4 gap-2" onClick={openCredentials}>
-                  <IdCard className="h-5 w-5" /><span className="text-xs">Credenciales</span>
-                </Button>
+            {/* TAB: INFO */}
+            <TabsContent value="info" className="space-y-4">
+              {selectedMacro.description && (
+                <Card className="p-4">
+                  <h3 className="font-medium mb-2">Descripción</h3>
+                  <p className="text-sm text-muted-foreground">{selectedMacro.description}</p>
+                </Card>
+              )}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card className="p-4 text-center">
+                  <p className="text-3xl font-bold">{macroEvts.length}</p>
+                  <p className="text-sm text-muted-foreground">Sub Eventos</p>
+                </Card>
+                <Card className="p-4 text-center">
+                  <p className="text-3xl font-bold">{sessions.filter(s => macroEvts.some(e => e.id === s.eventId)).length}</p>
+                  <p className="text-sm text-muted-foreground">Sesiones</p>
+                </Card>
+                <Card className="p-4 text-center">
+                  <p className="text-3xl font-bold">{db.actividadesSociales.getByEvento(selectedMacro.id).length}</p>
+                  <p className="text-sm text-muted-foreground">Actividades</p>
+                </Card>
+                <Card className="p-4 text-center">
+                  <p className="text-3xl font-bold">{db.eventoHoteles.getByEvento(selectedMacro.id).length}</p>
+                  <p className="text-sm text-muted-foreground">Hoteles</p>
+                </Card>
               </div>
-            </CardContent>
-          </Card>
+            </TabsContent>
 
-          {/* Simple Events table with search */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Eventos Simples</CardTitle>
-              <Button variant="hero" size="sm" onClick={() => openCreateEvent(selectedMacro.id)}>
-                <Plus className="h-4 w-4" />Nuevo Evento Simple
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="relative max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar eventos simples..." value={eventSearch} onChange={e => setEventSearch(e.target.value)} className="pl-9" />
+            {/* TAB: SUB EVENTOS */}
+            <TabsContent value="subeventos" className="space-y-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Sub Eventos</CardTitle>
+                  <Button variant="hero" size="sm" onClick={() => { setEditingSubeventoId(null); setIsSubeventoModalOpen(true); }}>
+                    <Plus className="h-4 w-4 mr-1" />Nuevo Sub Evento
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {subEventos.filter(se => se.eventoId === selectedMacro.id).length === 0 ? (
+                    <p className="text-center py-8 text-muted-foreground">No hay Sub Eventos</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Nombre</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead>Temáticas</TableHead>
+                          <TableHead>Estado</TableHead>
+                          <TableHead>Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {subEventos.filter(se => se.eventoId === selectedMacro.id).map(sub => (
+                          <TableRow key={sub.id}>
+                            <TableCell className="font-medium">{sub.nombre}</TableCell>
+                            <TableCell><Badge variant="outline">{sub.tipo}</Badge></TableCell>
+                            <TableCell>{sub.tematicaIds?.length || 0}</TableCell>
+                            <TableCell><Switch checked={sub.isActive} onCheckedChange={() => {
+                              db.subEventos.update(sub.id, { isActive: !sub.isActive });
+                              setSubEventos(db.subEventos.getAll());
+                            }} /></TableCell>
+                            <TableCell>
+                              <div className="flex gap-1">
+                                <Button variant="ghost" size="icon" onClick={() => { setEditingSubeventoId(sub.id); setIsSubeventoModalOpen(true); }}><Pencil className="h-4 w-4" /></Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* TAB: HERRAMIENTAS */}
+            <TabsContent value="herramientas" className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <Card className="p-4 cursor-pointer hover:bg-muted/50 transition-colors" onClick={openFormBuilder}>
+                  <div className="flex flex-col items-center text-center gap-2">
+                    <Settings2 className="h-8 w-8 text-primary" />
+                    <span className="font-medium">Formularios</span>
+                    <span className="text-xs text-muted-foreground">Inscripción</span>
+                  </div>
+                </Card>
+                <Card className="p-4 cursor-pointer hover:bg-muted/50 transition-colors" onClick={openEmailTemplates}>
+                  <div className="flex flex-col items-center text-center gap-2">
+                    <Mail className="h-8 w-8 text-primary" />
+                    <span className="font-medium">Emails</span>
+                    <span className="text-xs text-muted-foreground">Plantillas</span>
+                  </div>
+                </Card>
+                <Card className="p-4 cursor-pointer hover:bg-muted/50 transition-colors" onClick={openJuryAssignment}>
+                  <div className="flex flex-col items-center text-center gap-2">
+                    <Wand2 className="h-8 w-8 text-primary" />
+                    <span className="font-medium">Jurados</span>
+                    <span className="text-xs text-muted-foreground">Asignación</span>
+                  </div>
+                </Card>
+                <Card className="p-4 cursor-pointer hover:bg-muted/50 transition-colors" onClick={openCertificates}>
+                  <div className="flex flex-col items-center text-center gap-2">
+                    <Award className="h-8 w-8 text-primary" />
+                    <span className="font-medium">Certificados</span>
+                    <span className="text-xs text-muted-foreground">Gestión</span>
+                  </div>
+                </Card>
+                <Card className="p-4 cursor-pointer hover:bg-muted/50 transition-colors" onClick={openCredentials}>
+                  <div className="flex flex-col items-center text-center gap-2">
+                    <IdCard className="h-8 w-8 text-primary" />
+                    <span className="font-medium">Credenciales</span>
+                    <span className="text-xs text-muted-foreground">Gestión</span>
+                  </div>
+                </Card>
               </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nombre (ES)</TableHead>
-                    <TableHead>Nombre (EN)</TableHead>
-                    <TableHead>Descripción</TableHead>
-                    <TableHead className="text-center">Sesiones</TableHead>
-                    <TableHead className="text-center">Estado</TableHead>
-                    <TableHead>Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {macroEvts.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No hay eventos simples</TableCell></TableRow>
-                  ) : macroEvts.map(event => (
-                    <TableRow key={event.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openEventDetail(event)}>
-                      <TableCell className="font-medium">{event.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{event.nameEn || '-'}</TableCell>
-                      <TableCell className="text-muted-foreground max-w-[200px] truncate">{event.description?.replace(/<[^>]*>/g, '').substring(0, 60) || '-'}</TableCell>
-                      <TableCell className="text-center">{getSessionCount(event.id)}</TableCell>
-                      <TableCell className="text-center" onClick={e => e.stopPropagation()}>
-                        <Switch checked={event.isActive} onCheckedChange={() => toggleEventStatus(event)} />
-                      </TableCell>
-                      <TableCell onClick={e => e.stopPropagation()}>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => openEventDetail(event)} title="Ver detalle"><Eye className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => openEditEvent(event)} title="Editar"><Edit className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDeleteEvent(event)} title="Eliminar" disabled={event.isActive}><Trash2 className="h-4 w-4" /></Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+            </TabsContent>
+          </Tabs>
         </div>
         {renderDialogs()}
       </DashboardLayout>
@@ -938,15 +1112,15 @@ export default function Events() {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-display font-bold">Gestión de Eventos</h1>
-          <p className="text-muted-foreground mt-1">Macro eventos, eventos simples y sesiones</p>
+          <p className="text-muted-foreground mt-1">Eventos y Sub Eventos</p>
         </div>
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Buscar macro eventos..." value={macroSearch} onChange={e => setMacroSearch(e.target.value)} className="pl-9" />
+            <Input placeholder="Buscar eventos..." value={macroSearch} onChange={e => setMacroSearch(e.target.value)} className="pl-9" />
           </div>
-          <Button variant="hero" onClick={openCreateMacro}><Plus className="h-4 w-4" />Nuevo Macro Evento</Button>
+          <Button variant="hero" onClick={() => navigate('/events/wizard')}><Plus className="h-4 w-4" />Nuevo Evento</Button>
         </div>
 
         <Card>
@@ -957,14 +1131,14 @@ export default function Events() {
                 <TableHead>Siglas</TableHead>
                 <TableHead>Fecha Inicio</TableHead>
                 <TableHead>Fecha Fin</TableHead>
-                <TableHead className="text-center">Eventos Simples</TableHead>
+                <TableHead className="text-center">Sub Eventos</TableHead>
                 <TableHead className="text-center">Estado</TableHead>
                 <TableHead>Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredMacros.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No hay macro eventos</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No hay eventos</TableCell></TableRow>
               ) : filteredMacros.map(me => (
                 <TableRow key={me.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openMacroDetail(me)}>
                   <TableCell className="font-medium">{me.name}</TableCell>
@@ -978,7 +1152,7 @@ export default function Events() {
                   <TableCell onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1">
                       <Button variant="ghost" size="icon" onClick={() => openMacroDetail(me)} title="Ver detalle"><Eye className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => openEditMacro(me)} title="Editar"><Edit className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => navigate(`/events/wizard/${me.id}`)} title="Editar"><Pencil className="h-4 w-4" /></Button>
                       <Button variant="ghost" size="icon" onClick={() => handleDeleteMacro(me)} title="Eliminar" disabled={me.isActive}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                   </TableCell>

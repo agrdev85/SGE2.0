@@ -15,8 +15,7 @@ import { FormCanvas } from './FormCanvas';
 import { FormPreview } from './FormPreview';
 import { FormField, FieldType, Event } from '@/lib/database';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Eye, Edit3, Smartphone, Monitor } from 'lucide-react';
+import { Save, Eye, Monitor, Smartphone, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -37,7 +36,7 @@ export function FormBuilderWithPreview({
 }: FormBuilderWithPreviewProps) {
   const [fields, setFields] = useState<FormField[]>(initialFields);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
 
   const sensors = useSensors(
@@ -75,7 +74,7 @@ export function FormBuilderWithPreview({
         label: fieldLabel || fieldConfig?.label || 'Nuevo Campo',
         isRequired: false,
         orderIndex: fields.length,
-        width: 'full',
+        width: 'half',
       };
 
       if (fieldType === 'select' || fieldType === 'radio') {
@@ -122,22 +121,14 @@ export function FormBuilderWithPreview({
             Constructor de Formulario {type === 'user' ? 'de Usuarios' : 'de Evento'}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Arrastra campos para crear tu formulario y ve la vista previa en tiempo real
+            Arrastra campos para crear tu formulario y usa Vista Previa para ver el resultado
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'edit' | 'preview')}>
-            <TabsList>
-              <TabsTrigger value="edit" className="gap-2">
-                <Edit3 className="h-4 w-4" />
-                Editar
-              </TabsTrigger>
-              <TabsTrigger value="preview" className="gap-2">
-                <Eye className="h-4 w-4" />
-                Vista Previa
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <Button variant="outline" onClick={() => setShowPreviewDialog(true)} className="gap-2">
+            <Eye className="h-4 w-4" />
+            Vista Previa
+          </Button>
           <Button variant="hero" onClick={handleSave}>
             <Save className="h-4 w-4" />
             Guardar
@@ -145,120 +136,94 @@ export function FormBuilderWithPreview({
         </div>
       </div>
 
-      {activeTab === 'edit' ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
-            {/* Field Library */}
-            <div className="lg:col-span-3">
-              <FieldLibrary />
-            </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+          {/* Field Library - Panel Izquierdo */}
+          <div className="lg:col-span-3">
+            <FieldLibrary />
+          </div>
 
-            {/* Form Canvas */}
-            <div className="lg:col-span-4">
-              <FormCanvas
+          {/* Form Canvas - Constructor/Lienzo */}
+          <div className="lg:col-span-9">
+            <FormCanvas
+              fields={fields}
+              onRemove={handleRemoveField}
+              onUpdate={handleUpdateField}
+            />
+          </div>
+        </div>
+
+        <DragOverlay>
+          {activeId && activeId.startsWith('library-') && (
+            <div className="p-3 rounded-lg border bg-card shadow-lg opacity-80">
+              {(() => {
+                const type = activeId.replace('library-', '') as FieldType;
+                const field = fieldTypes.find(f => f.type === type);
+                const Icon = field?.icon;
+                return (
+                  <div className="flex items-center gap-3">
+                    {Icon && (
+                      <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center">
+                        <Icon className="h-4 w-4 text-primary" />
+                      </div>
+                    )}
+                    <span className="font-medium text-sm">{field?.label}</span>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+
+      {/* Modal de Vista Previa */}
+      {showPreviewDialog && (
+        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-hidden bg-background rounded-2xl border shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="font-display font-semibold text-lg">Vista Previa del Formulario</h3>
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1 bg-muted rounded-lg p-1">
+                  <button
+                    onClick={() => setPreviewDevice('desktop')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md transition-colors flex items-center gap-2 text-sm",
+                      previewDevice === 'desktop' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                    )}
+                  >
+                    <Monitor className="h-4 w-4" />
+                    Escritorio
+                  </button>
+                  <button
+                    onClick={() => setPreviewDevice('mobile')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md transition-colors flex items-center gap-2 text-sm",
+                      previewDevice === 'mobile' ? "bg-background shadow-sm" : "hover:bg-background/50"
+                    )}
+                  >
+                    <Smartphone className="h-4 w-4" />
+                    Móvil
+                  </button>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setShowPreviewDialog(false)}>
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+            </div>
+            <div className="overflow-y-auto p-6 max-h-[calc(90vh-80px)] flex justify-center">
+              <FormPreview
                 fields={fields}
-                onRemove={handleRemoveField}
-                onUpdate={handleUpdateField}
+                event={event}
+                device={previewDevice}
+                type={type}
+                fullScreen
               />
             </div>
-
-            {/* Live Preview */}
-            <div className="lg:col-span-5">
-              <div className="sticky top-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-display font-semibold text-lg">Vista Previa en Tiempo Real</h3>
-                  <div className="flex gap-1 bg-muted rounded-lg p-1">
-                    <button
-                      onClick={() => setPreviewDevice('desktop')}
-                      className={cn(
-                        "p-2 rounded-md transition-colors",
-                        previewDevice === 'desktop' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                      )}
-                    >
-                      <Monitor className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setPreviewDevice('mobile')}
-                      className={cn(
-                        "p-2 rounded-md transition-colors",
-                        previewDevice === 'mobile' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                      )}
-                    >
-                      <Smartphone className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                <FormPreview
-                  fields={fields}
-                  event={event}
-                  device={previewDevice}
-                  type={type}
-                />
-              </div>
-            </div>
-          </div>
-
-          <DragOverlay>
-            {activeId && activeId.startsWith('library-') && (
-              <div className="p-3 rounded-lg border bg-card shadow-lg opacity-80">
-                {(() => {
-                  const type = activeId.replace('library-', '') as FieldType;
-                  const field = fieldTypes.find(f => f.type === type);
-                  const Icon = field?.icon;
-                  return (
-                    <div className="flex items-center gap-3">
-                      {Icon && (
-                        <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center">
-                          <Icon className="h-4 w-4 text-primary" />
-                        </div>
-                      )}
-                      <span className="font-medium text-sm">{field?.label}</span>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-          </DragOverlay>
-        </DndContext>
-      ) : (
-        <div className="flex-1">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="flex gap-1 bg-muted rounded-lg p-1">
-              <button
-                onClick={() => setPreviewDevice('desktop')}
-                className={cn(
-                  "px-4 py-2 rounded-md transition-colors flex items-center gap-2",
-                  previewDevice === 'desktop' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                )}
-              >
-                <Monitor className="h-4 w-4" />
-                Escritorio
-              </button>
-              <button
-                onClick={() => setPreviewDevice('mobile')}
-                className={cn(
-                  "px-4 py-2 rounded-md transition-colors flex items-center gap-2",
-                  previewDevice === 'mobile' ? "bg-background shadow-sm" : "hover:bg-background/50"
-                )}
-              >
-                <Smartphone className="h-4 w-4" />
-                Móvil
-              </button>
-            </div>
-          </div>
-          <div className="flex justify-center">
-            <FormPreview
-              fields={fields}
-              event={event}
-              device={previewDevice}
-              type={type}
-              fullScreen
-            />
           </div>
         </div>
       )}

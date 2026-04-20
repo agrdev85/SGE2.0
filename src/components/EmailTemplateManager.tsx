@@ -1,69 +1,95 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db, Event, EmailTemplate, User } from '@/lib/database';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { RichTextEditor } from '@/components/ui/RichTextEditor';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogOverlay } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Edit, Trash2, Send, Eye, Mail, CheckCircle, AlertCircle } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { 
+  Plus, Pencil, Trash2, Send, Eye, Mail, CheckCircle, AlertCircle,
+  Settings, Zap, Users, Clock, Check, X, Copy, Code, Variable
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { ConfirmationDialog, useConfirmation } from '@/components/ui/ConfirmationDialog';
+import { cn } from '@/lib/utils';
 
 interface EmailTemplateManagerProps {
   event: Event;
 }
 
 const templateTypes = [
-  { value: 'INSCRIPCION', label: 'Confirmación de Inscripción' },
-  { value: 'ASIGNACION_JURADO', label: 'Asignación de Jurado' },
-  { value: 'APROBADO', label: 'Trabajo Aprobado' },
-  { value: 'RECHAZADO', label: 'Trabajo Rechazado' },
-  { value: 'CERTIFICADO', label: 'Envío de Certificado' },
-  { value: 'CUSTOM', label: 'Personalizado' },
+  { value: 'INSCRIPCION', label: 'Confirmación de Inscripción', icon: '📧', color: 'bg-green-100 text-green-700' },
+  { value: 'ASIGNACION_JURADO', label: 'Asignación de Jurado', icon: '👥', color: 'bg-blue-100 text-blue-700' },
+  { value: 'APROBADO', label: 'Trabajo Aprobado', icon: '✅', color: 'bg-emerald-100 text-emerald-700' },
+  { value: 'RECHAZADO', label: 'Trabajo Rechazado', icon: '❌', color: 'bg-red-100 text-red-700' },
+  { value: 'CERTIFICADO', label: 'Envío de Certificado', icon: '🏆', color: 'bg-yellow-100 text-yellow-700' },
+  { value: 'CUSTOM', label: 'Plantilla Personalizada', icon: '📝', color: 'bg-purple-100 text-purple-700' },
 ];
 
-const availableVariables = [
-  { key: 'userName', description: 'Nombre del usuario' },
-  { key: 'userEmail', description: 'Email del usuario' },
-  { key: 'eventName', description: 'Nombre del evento' },
-  { key: 'eventDate', description: 'Fecha del evento' },
-  { key: 'primaryColor', description: 'Color primario' },
-  { key: 'secondaryColor', description: 'Color secundario' },
-  { key: 'bannerImage', description: 'URL del banner' },
-  { key: 'backgroundImage', description: 'URL imagen de fondo' },
-  { key: 'abstractTitle', description: 'Título del trabajo' },
-  { key: 'categoryType', description: 'Categoría asignada' },
-  { key: 'workCount', description: 'Cantidad de trabajos' },
-  { key: 'deadline', description: 'Fecha límite' },
+const autoTriggerOptions = [
+  { value: 'ON_INSCRIPTION', label: 'Nueva Inscripción', description: 'Se envía cuando un usuario se inscribe al evento' },
+  { value: 'ON_ABSTRACT_SUBMIT', label: 'Envío de Trabajo', description: 'Se envía al submitir un resumen/abstract' },
+  { value: 'ON_ABSTRACT_APPROVED', label: 'Trabajo Aprobado', description: 'Se envía cuando un trabajo es aprobado' },
+  { value: 'ON_ABSTRACT_REJECTED', label: 'Trabajo Rechazado', description: 'Se envía cuando un trabajo es rechazado' },
+  { value: 'ON_CERTIFICATE_READY', label: 'Certificado Listo', description: 'Se envía cuando el certificado está disponible' },
+];
+
+const VARIABLES = [
+  { key: 'userName', label: 'Nombre del usuario', example: 'Juan Pérez' },
+  { key: 'userEmail', label: 'Correo electrónico', example: 'juan@email.com' },
+  { key: 'eventName', label: 'Nombre del evento', example: 'Congreso 2026' },
+  { key: 'eventDate', label: 'Fecha del evento', example: '15-20 Jun 2026' },
+  { key: 'primaryColor', label: 'Color primario', example: '#3b82f6' },
+  { key: 'secondaryColor', label: 'Color secundario', example: '#60a5fa' },
+  { key: 'bannerImage', label: 'Banner del evento', example: 'https://...' },
+  { key: 'abstractTitle', label: 'Título del trabajo', example: 'Mi Investigación' },
+  { key: 'categoryType', label: 'Categoría', example: 'Ponencia' },
+  { key: 'deadline', label: 'Fecha límite', example: '31 Dic 2024' },
 ];
 
 export function EmailTemplateManager({ event }: EmailTemplateManagerProps) {
+  const { success, confirm } = useConfirmation();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSendDialogOpen, setIsSendDialogOpen] = useState(false);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
-  const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
-  const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
+  const [sendDialog, setSendDialog] = useState<{ open: boolean; templateId: string | null }>({ open: false, templateId: null });
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [editorKey, setEditorKey] = useState(0);
+  const [showVariablesPanel, setShowVariablesPanel] = useState(false);
 
-  const [formData, setFormData] = useState({
-    type: 'CUSTOM' as EmailTemplate['type'],
+  const [formData, setFormData] = useState<{
+    type: EmailTemplate['type'];
+    name: string;
+    subject: string;
+    htmlBody: string;
+    autoTrigger?: string;
+  }>({
+    type: 'CUSTOM',
     name: '',
     subject: '',
     htmlBody: '',
+    autoTrigger: undefined,
   });
 
   useEffect(() => {
-    loadTemplates();
-    setUsers(db.users.getAll());
+    loadData();
   }, [event.id]);
 
-  const loadTemplates = () => {
+  const loadData = () => {
     setTemplates(db.emailTemplates.getByEvent(event.id));
+    setUsers(db.users.getAll());
+  };
+
+  const resetEditor = () => {
+    setEditorKey(prev => prev + 1);
   };
 
   const openCreateDialog = () => {
@@ -73,8 +99,11 @@ export function EmailTemplateManager({ event }: EmailTemplateManagerProps) {
       name: '',
       subject: '',
       htmlBody: getDefaultTemplate(),
+      autoTrigger: undefined,
     });
-    setIsDialogOpen(true);
+    setShowVariablesPanel(false);
+    resetEditor();
+    setIsEditorOpen(true);
   };
 
   const openEditDialog = (template: EmailTemplate) => {
@@ -83,77 +112,97 @@ export function EmailTemplateManager({ event }: EmailTemplateManagerProps) {
       type: template.type,
       name: template.name || '',
       subject: template.subject,
-      htmlBody: template.htmlBody,
+      htmlBody: template.htmlBody || '',
+      autoTrigger: template.autoTrigger || undefined,
     });
-    setIsDialogOpen(true);
+    setShowVariablesPanel(false);
+    resetEditor();
+    setIsEditorOpen(true);
   };
 
   const getDefaultTemplate = () => `
-<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-  <div style="background: linear-gradient(135deg, {{primaryColor}}, {{secondaryColor}}); padding: 40px; text-align: center;">
-    <img src="{{bannerImage}}" alt="{{eventName}}" style="max-width: 100%; height: auto; border-radius: 8px;">
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background: linear-gradient(135deg, {{primaryColor}}, {{secondaryColor}}); padding: 40px; text-align: center; border-radius: 12px 12px 0 0;">
+    <h1 style="color: white; margin: 0; font-size: 24px;">{{eventName}}</h1>
   </div>
-  <div style="padding: 30px; background: #ffffff;">
-    <h1 style="color: {{primaryColor}};">Hola {{userName}},</h1>
-    <p>Escribe tu mensaje aquí...</p>
+  <div style="padding: 30px; background: #ffffff; border: 1px solid #e5e5e5;">
+    <h2 style="color: #333; margin-top: 0;">Hola {{userName}},</h2>
+    <p style="color: #666; line-height: 1.6;">Escribe tu mensaje aquí...</p>
     <div style="text-align: center; margin: 30px 0;">
-      <a href="#" style="background: {{primaryColor}}; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px;">Botón de Acción</a>
+      <a href="#" style="background: {{primaryColor}}; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">Botón de Acción</a>
     </div>
   </div>
-  <div style="padding: 20px; background: #f5f5f5; text-align: center; font-size: 12px; color: #666;">
-    <p>{{eventName}} - Todos los derechos reservados</p>
+  <div style="padding: 20px; background: #f5f5f5; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 12px 12px;">
+    <p style="margin: 0;">{{eventName}} - Todos los derechos reservados</p>
   </div>
-</div>
-  `.trim();
+</div>`.trim();
 
   const handleSave = () => {
     if (!formData.subject || !formData.htmlBody) {
-      toast.error('Completa los campos requeridos');
+      toast.error('Completa el asunto y el contenido del email');
       return;
     }
 
     try {
       if (editingTemplate) {
         db.emailTemplates.update(editingTemplate.id, {
-          ...formData,
-          eventId: event.id,
+          type: formData.type,
+          name: formData.name,
+          subject: formData.subject,
+          htmlBody: formData.htmlBody,
+          autoTrigger: formData.autoTrigger as any,
         });
-        toast.success('Plantilla actualizada');
+        toast.success('Plantilla actualizada correctamente');
       } else {
         db.emailTemplates.create({
-          ...formData,
+          type: formData.type,
+          name: formData.name,
+          subject: formData.subject,
+          htmlBody: formData.htmlBody,
           eventId: event.id,
+          autoTrigger: formData.autoTrigger as any,
         });
-        toast.success('Plantilla creada');
+        toast.success('Plantilla creada correctamente');
       }
-      setIsDialogOpen(false);
-      loadTemplates();
+      setIsEditorOpen(false);
+      loadData();
     } catch {
-      toast.error('Error al guardar');
+      toast.error('Error al guardar la plantilla');
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('¿Eliminar esta plantilla?')) {
-      db.emailTemplates.delete(id);
+  const handleDelete = async (template: EmailTemplate) => {
+    const confirmed = await confirm({
+      title: '¿Eliminar plantilla?',
+      description: `Se eliminará "${template.name || template.subject}". Esta acción no se puede deshacer.`,
+      variant: 'danger',
+      confirmText: 'Eliminar',
+    });
+
+    if (confirmed) {
+      db.emailTemplates.delete(template.id);
       toast.success('Plantilla eliminada');
-      loadTemplates();
+      loadData();
     }
   };
 
-  const openSendDialog = (template: EmailTemplate) => {
-    setSelectedTemplate(template);
-    setSelectedRecipients([]);
-    setIsSendDialogOpen(true);
+  const filteredUsers = useMemo(() => {
+    if (!userSearch) return users;
+    const search = userSearch.toLowerCase();
+    return users.filter(u => 
+      u.name.toLowerCase().includes(search) || 
+      u.email.toLowerCase().includes(search)
+    );
+  }, [users, userSearch]);
+
+  const openSendDialog = (templateId: string) => {
+    setSelectedUsers([]);
+    setUserSearch('');
+    setSendDialog({ open: true, templateId });
   };
 
-  const openPreview = (template: EmailTemplate) => {
-    setSelectedTemplate(template);
-    setIsPreviewOpen(true);
-  };
-
-  const handleSendEmails = () => {
-    if (!selectedTemplate || selectedRecipients.length === 0) {
+  const handleSendEmails = async () => {
+    if (!sendDialog.templateId || selectedUsers.length === 0) {
       toast.error('Selecciona al menos un destinatario');
       return;
     }
@@ -161,18 +210,46 @@ export function EmailTemplateManager({ event }: EmailTemplateManagerProps) {
     try {
       db.emailService.sendBulkEmail(
         event.id,
-        selectedTemplate.id,
-        selectedRecipients,
-        {
-          eventDate: `${event.startDate} - ${event.endDate}`,
-        }
+        sendDialog.templateId,
+        selectedUsers,
+        { eventDate: `${event.startDate} - ${event.endDate}` }
       );
-      toast.success(`${selectedRecipients.length} email(s) enviado(s) correctamente`);
-      setIsSendDialogOpen(false);
+      
+      toast.success(`${selectedUsers.length} email(s) enviado(s) correctamente`);
+      setSendDialog({ open: false, templateId: null });
     } catch {
-      toast.error('Error al enviar emails');
+      toast.error('Error al enviar los emails');
     }
   };
+
+  const insertVariable = (variable: string) => {
+    setFormData(prev => ({
+      ...prev,
+      htmlBody: prev.htmlBody + `{{${variable}}}`,
+    }));
+    toast.success(`Variable {{${variable}}} insertada`);
+  };
+
+  const handleAutoTriggerChange = async (trigger: string, enabled: boolean, templateId: string) => {
+    if (enabled && templateId) {
+      templates.forEach(t => {
+        if (t.autoTrigger === trigger && t.id !== templateId) {
+          db.emailTemplates.update(t.id, { autoTrigger: undefined } as any);
+        }
+      });
+      db.emailTemplates.update(templateId, { autoTrigger: trigger } as any);
+      toast.success('Automatización activada');
+    } else {
+      const t = templates.find(t => t.autoTrigger === trigger);
+      if (t) {
+        db.emailTemplates.update(t.id, { autoTrigger: undefined } as any);
+      }
+      toast.success('Automatización desactivada');
+    }
+    loadData();
+  };
+
+  const getTemplateTypeInfo = (type: string) => templateTypes.find(t => t.value === type) || templateTypes[5];
 
   const renderPreviewHtml = (template: EmailTemplate) => {
     let html = template.htmlBody;
@@ -182,287 +259,414 @@ export function EmailTemplateManager({ event }: EmailTemplateManagerProps) {
       eventName: event.name,
       primaryColor: event.primaryColor,
       secondaryColor: event.secondaryColor,
-      bannerImage: event.bannerImageUrl,
-      backgroundImage: event.backgroundImageUrl || event.bannerImageUrl,
+      bannerImage: event.bannerImageUrl || 'https://picsum.photos/600/200',
       eventDate: `${event.startDate} - ${event.endDate}`,
-      abstractTitle: 'Título del Trabajo de Ejemplo',
+      abstractTitle: 'Título del Trabajo',
       categoryType: 'Ponencia',
-      workCount: '5',
-      deadline: '2024-12-31',
+      deadline: '31 Dic 2024',
     };
-
     Object.entries(variables).forEach(([key, value]) => {
-      const regex = new RegExp(`{{${key}}}`, 'g');
-      html = html.replace(regex, value);
+      html = html.replace(new RegExp(`{{${key}}}`, 'g'), value);
     });
-
     return html;
   };
 
-  const insertVariable = (key: string) => {
-    setFormData(prev => ({
-      ...prev,
-      htmlBody: prev.htmlBody + `{{${key}}}`,
-    }));
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-display font-semibold">Plantillas de Email</h2>
-          <p className="text-sm text-muted-foreground">
-            Crea y gestiona emails personalizados para el evento
+          <h2 className="text-2xl font-display font-bold flex items-center gap-2">
+            <Mail className="h-6 w-6 text-primary" />
+            Gestión de Plantillas de Email
+          </h2>
+          <p className="text-muted-foreground mt-1">
+            Configura plantillas y automatizaciones para comunicar con los participantes
           </p>
         </div>
-        <Button variant="hero" onClick={openCreateDialog}>
+        <Button onClick={openCreateDialog} className="gap-2">
           <Plus className="h-4 w-4" />
           Nueva Plantilla
         </Button>
       </div>
 
       {templates.length === 0 ? (
-        <Card className="text-center py-12">
+        <Card className="text-center py-16">
           <CardContent>
-            <Mail className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
-            <h3 className="text-lg font-semibold mb-2">No hay plantillas</h3>
-            <p className="text-muted-foreground mb-4">
-              Crea plantillas de email personalizadas para tu evento
+            <div className="h-20 w-20 rounded-2xl bg-muted mx-auto mb-6 flex items-center justify-center">
+              <Mail className="h-10 w-10 text-muted-foreground/50" />
+            </div>
+            <h3 className="text-xl font-semibold mb-2">No hay plantillas creadas</h3>
+            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+              Crea tu primera plantilla de email para comenzar a comunicarte con los participantes del evento
             </p>
-            <Button variant="hero" onClick={openCreateDialog}>
+            <Button onClick={openCreateDialog} className="gap-2">
               <Plus className="h-4 w-4" />
-              Crear Plantilla
+              Crear Primera Plantilla
             </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {templates.map(template => (
-            <Card key={template.id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-base font-display">
-                      {template.name || template.subject}
-                    </CardTitle>
-                    <Badge variant="secondary" className="mt-1">
-                      {templateTypes.find(t => t.value === template.type)?.label}
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+          {templates.map(template => {
+            const typeInfo = getTemplateTypeInfo(template.type);
+            const autoTrigger = autoTriggerOptions.find(t => t.value === template.autoTrigger);
+            return (
+              <Card key={template.id} className="hover:shadow-lg transition-all group">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center text-xl", typeInfo.color)}>
+                        {typeInfo.icon}
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">
+                          {template.name || template.subject}
+                        </CardTitle>
+                        <p className="text-sm text-muted-foreground">{typeInfo.label}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openSendDialog(template.id)}>
+                        <Send className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(template)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(template)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{template.subject}</p>
+                  {autoTrigger && (
+                    <Badge variant="outline" className="gap-1 mb-3 bg-purple-50 text-purple-700 border-purple-200">
+                      <Zap className="h-3 w-3" />
+                      {autoTrigger.label}
                     </Badge>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openPreview(template)}>
-                      <Eye className="h-4 w-4" />
+                  )}
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => openSendDialog(template.id)}>
+                      <Send className="h-3 w-3" /> Enviar
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(template)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(template.id)}>
-                      <Trash2 className="h-4 w-4" />
+                    <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => openEditDialog(template)}>
+                      <Settings className="h-3 w-3" /> Editar
                     </Button>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                  {template.subject}
-                </p>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => openSendDialog(template)}
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  Enviar Email
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
-      {/* Create/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-display">
-              {editingTemplate ? 'Editar Plantilla' : 'Nueva Plantilla de Email'}
-            </DialogTitle>
-          </DialogHeader>
-
-          <Tabs defaultValue="edit">
-            <TabsList>
-              <TabsTrigger value="edit">Editar</TabsTrigger>
-              <TabsTrigger value="preview">Vista Previa</TabsTrigger>
-              <TabsTrigger value="variables">Variables</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="edit" className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Tipo de Email</Label>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center">
+              <Zap className="h-5 w-5 text-purple-600" />
+            </div>
+            <div>
+              <CardTitle>Automatizaciones</CardTitle>
+              <CardDescription>Configura el envío automático de emails según eventos del sistema</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {autoTriggerOptions.map(trigger => {
+            const linkedTemplate = templates.find(t => t.autoTrigger === trigger.value);
+            return (
+              <div key={trigger.value} className="flex items-center justify-between p-4 rounded-xl border bg-card">
+                <div className="flex items-center gap-4">
+                  <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center">
+                    <Clock className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{trigger.label}</p>
+                    <p className="text-sm text-muted-foreground">{trigger.description}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
                   <Select
-                    value={formData.type}
-                    onValueChange={(v) => setFormData({ ...formData, type: v as EmailTemplate['type'] })}
+                    value={linkedTemplate?.id || ''}
+                    onValueChange={(templateId) => {
+                      if (templateId) {
+                        handleAutoTriggerChange(trigger.value, true, templateId);
+                      }
+                    }}
                   >
-                    <SelectTrigger>
-                      <SelectValue />
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Sin asignar..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {templateTypes.map(type => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
+                      <SelectItem value="__none__">Sin asignar</SelectItem>
+                      {templates.map(t => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name || t.subject}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <div className={cn(
+                    "h-8 w-8 rounded-full flex items-center justify-center transition-colors",
+                    linkedTemplate ? "bg-green-100 text-green-600" : "bg-muted text-muted-foreground"
+                  )}>
+                    {linkedTemplate ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Nombre (opcional)</Label>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
+        <DialogPrimitive.Portal>
+          <DialogOverlay className="fixed inset-0 bg-black/70 z-40" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full h-full max-w-7xl max-h-[calc(100vh-2rem)] bg-background border rounded-xl shadow-2xl flex flex-col overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b bg-card">
+                <div className="flex items-center gap-3">
+                  {editingTemplate ? <Pencil className="h-5 w-5 text-primary" /> : <Plus className="h-5 w-5 text-primary" />}
+                  <h2 className="text-xl font-bold">
+                    {editingTemplate ? 'Editar Plantilla' : 'Nueva Plantilla de Email'}
+                  </h2>
+                </div>
+                <button
+                  className="rounded-lg p-2 hover:bg-muted transition-colors"
+                  onClick={() => setIsEditorOpen(false)}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Config Row */}
+              <div className="flex items-center gap-4 p-4 border-b bg-muted/30">
+                <div className="flex-1 grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Tipo</Label>
+                    <Select
+                      value={formData.type}
+                      onValueChange={(v) => setFormData({ ...formData, type: v as any })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {templateTypes.map(type => (
+                          <SelectItem key={type.value} value={type.value}>
+                            <span className="flex items-center gap-2">
+                              <span>{type.icon}</span>
+                              {type.label}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Nombre (opcional)</Label>
+                    <Input
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="Nombre descriptivo"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1 flex-1">
+                  <Label className="text-xs text-muted-foreground">Asunto del Email *</Label>
                   <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Nombre descriptivo"
+                    value={formData.subject}
+                    onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                    placeholder="Asunto que verán los destinatarios..."
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Asunto *</Label>
-                <Input
-                  value={formData.subject}
-                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                  placeholder="Asunto del email..."
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Contenido HTML *</Label>
-                <Textarea
-                  value={formData.htmlBody}
-                  onChange={(e) => setFormData({ ...formData, htmlBody: e.target.value })}
-                  rows={15}
-                  className="font-mono text-sm"
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="preview" className="mt-4">
-              <div className="border rounded-lg overflow-hidden">
-                <div
-                  className="p-4"
-                  dangerouslySetInnerHTML={{
-                    __html: renderPreviewHtml({ ...formData, id: '', eventId: event.id } as EmailTemplate),
-                  }}
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="variables" className="mt-4">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground mb-4">
-                  Haz clic en una variable para insertarla en el contenido. Usa el formato {'{{variable}}'}.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {availableVariables.map(v => (
+              {/* Main Content */}
+              <div className="flex-1 flex gap-4 p-4 overflow-hidden">
+                {/* Editor Panel */}
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label>Contenido del Email *</Label>
                     <Button
-                      key={v.key}
                       variant="outline"
-                      className="justify-start h-auto py-2"
-                      onClick={() => insertVariable(v.key)}
+                      size="sm"
+                      onClick={() => setShowVariablesPanel(!showVariablesPanel)}
+                      className="gap-2"
                     >
-                      <code className="text-primary mr-2">{`{{${v.key}}}`}</code>
-                      <span className="text-muted-foreground text-xs">{v.description}</span>
+                      <Variable className="h-4 w-4" />
+                      {showVariablesPanel ? 'Ocultar' : 'Insertar'} Variables
                     </Button>
-                  ))}
+                  </div>
+                  
+                  {showVariablesPanel && (
+                    <div className="mb-3 p-3 bg-muted/50 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-2">Haz clic para insertar una variable:</p>
+                      <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                        {VARIABLES.map(v => (
+                          <button
+                            key={v.key}
+                            onClick={() => insertVariable(v.key)}
+                            className="flex items-center gap-2 p-2 text-left rounded-lg hover:bg-background transition-colors text-sm"
+                          >
+                            <code className="text-primary font-mono text-xs bg-primary/10 px-1.5 py-0.5 rounded">{'{{' + v.key + '}}'}</code>
+                            <span className="text-muted-foreground text-xs">{v.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex-1 overflow-hidden">
+                    <RichTextEditor
+                      key={editorKey}
+                      value={formData.htmlBody}
+                      onChange={(value) => setFormData({ ...formData, htmlBody: value })}
+                      placeholder="Escribe el contenido de tu email aquí..."
+                      minHeight="400px"
+                    />
+                  </div>
+                </div>
+
+                {/* Sidebar */}
+                <div className="w-80 flex flex-col overflow-y-auto">
+                  <div className="mb-4">
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <Eye className="h-4 w-4" />
+                      Vista Previa
+                    </h4>
+                    <div className="border rounded-lg overflow-hidden bg-white">
+                      <div 
+                        className="p-4 text-sm"
+                        dangerouslySetInnerHTML={{ __html: renderPreviewHtml({ ...formData, id: '', eventId: event.id } as EmailTemplate) }}
+                      />
+                    </div>
+                  </div>
+
+                  <Separator className="my-4" />
+
+                  <div>
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      Automatización
+                    </h4>
+                    <Select
+                      value={formData.autoTrigger || 'none'}
+                      onValueChange={(v) => setFormData({ ...formData, autoTrigger: v === 'none' ? undefined : v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sin automatizar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sin automatizar</SelectItem>
+                        {autoTriggerOptions.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
-            </TabsContent>
-          </Tabs>
 
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button variant="hero" onClick={handleSave}>
-              {editingTemplate ? 'Actualizar' : 'Crear Plantilla'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
+              {/* Footer */}
+              <div className="flex-shrink-0 px-6 py-4 border-t bg-muted/30">
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setIsEditorOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleSave} className="gap-2">
+                    <Check className="h-4 w-4" />
+                    {editingTemplate ? 'Guardar Cambios' : 'Crear Plantilla'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogPrimitive.Portal>
       </Dialog>
 
-      {/* Send Email Dialog */}
-      <Dialog open={isSendDialogOpen} onOpenChange={setIsSendDialogOpen}>
-        <DialogContent className="max-w-lg">
+      <Dialog open={sendDialog.open} onOpenChange={(open) => !open && setSendDialog({ open: false, templateId: null })}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="font-display">Enviar Email</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5 text-primary" />
+              Enviar Email
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona los destinatarios para enviar esta plantilla
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div>
-              <Label className="mb-2 block">Plantilla</Label>
-              <p className="text-sm text-muted-foreground">{selectedTemplate?.subject}</p>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Buscar usuarios</Label>
+              <Input
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Buscar por nombre o email..."
+              />
             </div>
 
-            <div>
-              <Label className="mb-2 block">Seleccionar Destinatarios</Label>
-              <div className="border rounded-lg max-h-60 overflow-y-auto">
-                {users.map(user => (
+            <div className="border rounded-xl max-h-64 overflow-y-auto">
+              {filteredUsers.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  <Users className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <p>No se encontraron usuarios</p>
+                </div>
+              ) : (
+                filteredUsers.map(user => (
                   <label
                     key={user.id}
-                    className="flex items-center gap-3 p-3 hover:bg-muted cursor-pointer border-b last:border-0"
+                    className="flex items-center gap-3 p-3 hover:bg-muted cursor-pointer border-b last:border-0 transition-colors"
                   >
                     <input
                       type="checkbox"
-                      checked={selectedRecipients.includes(user.id)}
+                      checked={selectedUsers.includes(user.id)}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelectedRecipients([...selectedRecipients, user.id]);
+                          setSelectedUsers([...selectedUsers, user.id]);
                         } else {
-                          setSelectedRecipients(selectedRecipients.filter(id => id !== user.id));
+                          setSelectedUsers(selectedUsers.filter(id => id !== user.id));
                         }
                       }}
-                      className="h-4 w-4"
+                      className="h-4 w-4 rounded"
                     />
-                    <div>
+                    <div className="flex-1">
                       <p className="font-medium text-sm">{user.name}</p>
                       <p className="text-xs text-muted-foreground">{user.email}</p>
                     </div>
                   </label>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {selectedRecipients.length} destinatario(s) seleccionado(s)
-              </p>
+                ))
+              )}
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <span className="text-sm">
+                <Users className="h-4 w-4 inline mr-1" />
+                {selectedUsers.length} de {users.length} destinatarios
+              </span>
+              {selectedUsers.length > 0 && selectedUsers.length < users.length && (
+                <Button variant="ghost" size="sm" onClick={() => setSelectedUsers(users.map(u => u.id))}>
+                  Seleccionar todos
+                </Button>
+              )}
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSendDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setSendDialog({ open: false, templateId: null })}>
               Cancelar
             </Button>
-            <Button variant="hero" onClick={handleSendEmails}>
-              <Send className="h-4 w-4 mr-2" />
-              Enviar ({selectedRecipients.length})
+            <Button onClick={handleSendEmails} disabled={selectedUsers.length === 0} className="gap-2">
+              <Send className="h-4 w-4" />
+              Enviar {selectedUsers.length > 0 && `(${selectedUsers.length})`}
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Preview Dialog */}
-      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-display">Vista Previa del Email</DialogTitle>
-          </DialogHeader>
-          {selectedTemplate && (
-            <div className="border rounded-lg overflow-hidden">
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: renderPreviewHtml(selectedTemplate),
-                }}
-              />
-            </div>
-          )}
         </DialogContent>
       </Dialog>
     </div>

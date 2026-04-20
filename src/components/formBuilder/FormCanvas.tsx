@@ -30,9 +30,10 @@ interface SortableFieldProps {
   field: FormField;
   onRemove: (id: string) => void;
   onUpdate: (id: string, data: Partial<FormField>) => void;
+  isHalfWidth: boolean;
 }
 
-function SortableField({ field, onRemove, onUpdate }: SortableFieldProps) {
+function SortableField({ field, onRemove, onUpdate, isHalfWidth }: SortableFieldProps) {
   const [isEditing, setIsEditing] = useState(false);
   const {
     attributes,
@@ -58,7 +59,8 @@ function SortableField({ field, onRemove, onUpdate }: SortableFieldProps) {
         style={style}
         className={cn(
           "p-4 rounded-lg border bg-card group transition-all",
-          isDragging && "opacity-50 shadow-lg ring-2 ring-primary"
+          isDragging && "opacity-50 shadow-lg ring-2 ring-primary z-50",
+          isHalfWidth && "md:col-span-1"
         )}
       >
         <div className="flex items-start gap-3">
@@ -81,9 +83,11 @@ function SortableField({ field, onRemove, onUpdate }: SortableFieldProps) {
               {field.isRequired && (
                 <span className="text-destructive text-xs">*</span>
               )}
+              {field.width === 'half' && (
+                <span className="text-xs px-1.5 py-0.5 bg-muted rounded text-muted-foreground">½</span>
+              )}
             </div>
 
-            {/* Field Preview */}
             <div className="pointer-events-none opacity-70">
               <FieldPreview field={field} />
             </div>
@@ -110,7 +114,6 @@ function SortableField({ field, onRemove, onUpdate }: SortableFieldProps) {
         </div>
       </div>
 
-      {/* Edit Sheet */}
       <Sheet open={isEditing} onOpenChange={setIsEditing}>
         <SheetContent>
           <SheetHeader>
@@ -136,6 +139,31 @@ function SortableField({ field, onRemove, onUpdate }: SortableFieldProps) {
                 onChange={(e) => onUpdate(field.id, { placeholder: e.target.value })}
                 placeholder="Texto de ayuda..."
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Diseño del Campo</Label>
+              <div className="flex gap-2">
+                <Button
+                  variant={field.width === 'full' || !field.width ? 'default' : 'outline'}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => onUpdate(field.id, { width: 'full' })}
+                >
+                  <span className="mr-2">▬</span> Ancho Completo
+                </Button>
+                <Button
+                  variant={field.width === 'half' ? 'default' : 'outline'}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => onUpdate(field.id, { width: 'half' })}
+                >
+                  <span className="mr-2">▬▬</span> Mitad (2 cols)
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Los campos de mitad ocupan la mitad del ancho
+              </p>
             </div>
 
             <div className="flex items-center justify-between">
@@ -184,7 +212,7 @@ function FieldPreview({ field }: { field: FormField }) {
       return <Input type="date" disabled />;
     case 'select':
       return (
-        <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" disabled>
+        <select className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2" disabled>
           <option>Seleccionar...</option>
           {field.options?.map(opt => <option key={opt}>{opt}</option>)}
         </select>
@@ -216,6 +244,12 @@ function FieldPreview({ field }: { field: FormField }) {
       );
     case 'separator':
       return <Separator className="my-2" />;
+    case 'heading':
+      return (
+        <div className="font-semibold text-lg border-b pb-1">
+          Título de Sección
+        </div>
+      );
     default:
       return null;
   }
@@ -232,13 +266,89 @@ export function FormCanvas({ fields, onRemove, onUpdate }: FormCanvasProps) {
     id: 'form-canvas',
   });
 
+  const fieldIds = fields.map(f => f.id);
+
+  const renderLayout = () => {
+    if (fields.length === 0) return null;
+
+    const rows: { field: FormField; isHalf: boolean }[][] = [];
+    let halfPending: FormField | null = null;
+
+    fields.forEach(field => {
+      const isHalf = field.width === 'half';
+
+      if (isHalf) {
+        if (halfPending) {
+          rows.push([
+            { field: halfPending, isHalf: true },
+            { field, isHalf: true }
+          ]);
+          halfPending = null;
+        } else {
+          halfPending = field;
+        }
+      } else {
+        if (halfPending) {
+          rows.push([
+            { field: halfPending, isHalf: true },
+            { field: { ...field, id: '__empty__' } as FormField, isHalf: true }
+          ]);
+          halfPending = null;
+        } else {
+          rows.push([{ field, isHalf: false }]);
+        }
+      }
+    });
+
+    if (halfPending) {
+      rows.push([{ field: halfPending, isHalf: true }]);
+    }
+
+    return rows.map((row, rowIndex) => (
+      <div
+        key={rowIndex}
+        className={cn(
+          "grid gap-3",
+          row.length === 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1"
+        )}
+      >
+        {row.map((item, itemIndex) => {
+          if (item.field.id === '__empty__') {
+            return <div key="__empty__" className="hidden md:block" />;
+          }
+          return (
+            <SortableField
+              key={item.field.id}
+              field={item.field}
+              onRemove={onRemove}
+              onUpdate={onUpdate}
+              isHalfWidth={item.isHalf}
+            />
+          );
+        })}
+      </div>
+    ));
+  };
+
   return (
     <Card className="h-full">
       <div className="p-4 border-b">
-        <h3 className="font-display font-semibold">Vista Previa del Formulario</h3>
-        <p className="text-sm text-muted-foreground">
-          Arrastra campos aquí para construir tu formulario
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-display font-semibold">Vista Previa del Formulario</h3>
+            <p className="text-sm text-muted-foreground">
+              Arrastra campos aquí para construir tu formulario
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-2 py-1 bg-muted rounded flex items-center gap-1">
+              <span className="w-3 h-3 border-2 border-current rounded-sm" /> 1 columna
+            </span>
+            <span className="text-xs px-2 py-1 bg-primary/10 text-primary rounded flex items-center gap-1">
+              <span className="w-3 h-3 border-2 border-current rounded-sm" />½ 2 columnas
+            </span>
+          </div>
+        </div>
       </div>
 
       <div
@@ -257,16 +367,9 @@ export function FormCanvas({ fields, onRemove, onUpdate }: FormCanvasProps) {
             <p className="text-sm">Crea tu formulario personalizado</p>
           </div>
         ) : (
-          <SortableContext items={fields.map(f => f.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext items={fieldIds} strategy={verticalListSortingStrategy}>
             <div className="space-y-3">
-              {fields.map(field => (
-                <SortableField
-                  key={field.id}
-                  field={field}
-                  onRemove={onRemove}
-                  onUpdate={onUpdate}
-                />
-              ))}
+              {renderLayout()}
             </div>
           </SortableContext>
         )}

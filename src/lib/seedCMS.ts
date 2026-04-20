@@ -30,7 +30,7 @@ export function seedCMSData() {
   const scienceCategory = db.cmsCategories.create({
     name: 'Ciencia',
     slug: 'ciencia',
-    description: 'Descubrimientos y avances científicos',
+    description: 'Descubrimientos y avances',
     orderIndex: 2,
   });
 
@@ -64,7 +64,7 @@ export function seedCMSData() {
     status: 'published',
     author: 'admin',
     metaTitle: 'Sistema de Gestión de Eventos - Inicio',
-    metaDescription: 'Plataforma completa para gestionar eventos científicos y académicos',
+    metaDescription: 'Plataforma completa para gestionar eventos y actividades',
     publishedAt: new Date().toISOString(),
   });
 
@@ -73,10 +73,10 @@ export function seedCMSData() {
     slug: 'acerca',
     content: `
       <h1>Sobre el Sistema</h1>
-      <p>Este sistema fue desarrollado para facilitar la gestión integral de eventos científicos y académicos.</p>
+      <p>Este sistema fue desarrollado para facilitar la gestión integral de eventos y actividades.</p>
       
       <h2>Misión</h2>
-      <p>Proporcionar una plataforma moderna, eficiente y fácil de usar para la organización de congresos científicos.</p>
+      <p>Proporcionar una plataforma moderna, eficiente y fácil de usar para la organización de congresos y eventos.</p>
       
       <h2>Visión</h2>
       <p>Ser la herramienta líder en la gestión de eventos académicos en América Latina.</p>
@@ -127,10 +127,10 @@ export function seedCMSData() {
   db.cmsArticles.create({
     title: 'Introducción al Sistema de Gestión de Eventos',
     slug: 'introduccion-sistema',
-    excerpt: 'Descubre cómo nuestro sistema puede transformar la organización de tus eventos científicos.',
+    excerpt: 'Descubre cómo nuestro sistema puede transformar la organización de tus eventos.',
     content: `
       <h2>¿Qué es el Sistema de Gestión de Eventos?</h2>
-      <p>Nuestro sistema es una plataforma integral diseñada específicamente para la gestión de congresos, simposios y eventos científicos.</p>
+      <p>Nuestro sistema es una plataforma integral diseñada para la gestión de congresos, simposios y eventos de todo tipo.</p>
       
       <h3>Características Principales</h3>
       <p>El sistema incluye módulos para:</p>
@@ -138,7 +138,7 @@ export function seedCMSData() {
         <li>Recepción y gestión de abstracts</li>
         <li>Asignación de revisores</li>
         <li>Proceso de revisión por pares</li>
-        <li>Gestión del programa científico</li>
+        <li>Gestión del programa</li>
         <li>Panel administrativo SuperAdmin</li>
       </ul>
       
@@ -383,7 +383,7 @@ export function seedCMSData() {
   // 6. Configuraciones del Sistema
   db.cmsSettings.update({
     siteName: 'Sistema de Gestión de Eventos',
-    siteDescription: 'Plataforma integral para eventos científicos',
+    siteDescription: 'Plataforma integral para eventos',
     primaryColor: '#3B82F6',
     secondaryColor: '#10B981',
     contactInfo: {

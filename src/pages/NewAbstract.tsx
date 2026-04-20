@@ -146,7 +146,7 @@ export default function NewAbstract() {
           <CardHeader>
             <CardTitle className="text-2xl font-display">Enviar Nuevo Resumen</CardTitle>
             <CardDescription>
-              Completa el formulario para enviar tu trabajo científico a revisión
+              Completa el formulario para enviar tu trabajo a revisión
             </CardDescription>
           </CardHeader>
           <CardContent>

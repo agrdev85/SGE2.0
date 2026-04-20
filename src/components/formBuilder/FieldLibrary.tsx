@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -14,10 +15,18 @@ import {
   Image,
   Minus,
   Heading,
+  User,
+  MapPin,
+  Briefcase,
+  GraduationCap,
+  Users,
+  FileText,
+  GripVertical,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FieldType } from '@/lib/database';
 import { cn } from '@/lib/utils';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface FieldConfig {
   type: FieldType;
@@ -26,33 +35,69 @@ interface FieldConfig {
   description: string;
 }
 
-const fieldTypes: FieldConfig[] = [
-  { type: 'heading', label: 'Encabezado', icon: Heading, description: 'Título o sección' },
-  // Predefined registration fields (labels match RegisterUser mockup)
-  { type: 'text', label: 'Nombre(s) y Apellidos', icon: Type, description: 'Nombre completo' },
-  { type: 'text', label: 'Carné de Identidad / Pasaporte', icon: Hash, description: 'Documento de identidad' },
-  { type: 'email', label: 'Email', icon: Mail, description: 'Correo electrónico' },
-  { type: 'phone', label: 'Teléfono', icon: Phone, description: 'Número telefónico' },
-  { type: 'select', label: 'País', icon: ChevronDown, description: 'Selecciona un país' },
-  { type: 'select', label: 'Afiliación', icon: ChevronDown, description: 'Institución o empresa' },
-  { type: 'select', label: 'Tipo de Afiliación', icon: ChevronDown, description: 'Académica / Profesional' },
-  { type: 'select', label: 'Sector Económico', icon: ChevronDown, description: 'Sector de trabajo' },
-  { type: 'select', label: 'Tipo de Participación', icon: ChevronDown, description: 'Ponente / Asistente / Poster' },
-  { type: 'select', label: 'Nivel Científico', icon: ChevronDown, description: 'Doctorado / Maestría / Licenciatura' },
-  { type: 'select', label: 'Nivel Educacional', icon: ChevronDown, description: 'Nivel educativo' },
-  { type: 'radio', label: 'Género', icon: Circle, description: 'Masculino / Femenino' },
-  { type: 'image', label: 'Foto de Perfil', icon: Image, description: 'Sube una foto de perfil' },
-  { type: 'text', label: 'Contraseña', icon: Type, description: 'Contraseña de acceso' },
-  // Generic builder items
-  { type: 'text', label: 'Texto corto', icon: Type, description: 'Campo de texto simple' },
-  { type: 'textarea', label: 'Texto largo', icon: AlignLeft, description: 'Área de texto múltiple líneas' },
-  { type: 'number', label: 'Número', icon: Hash, description: 'Campo numérico' },
-  { type: 'date', label: 'Fecha', icon: Calendar, description: 'Selector de fecha' },
-  { type: 'select', label: 'Selector', icon: ChevronDown, description: 'Menú desplegable' },
-  { type: 'checkbox', label: 'Checkbox', icon: CheckSquare, description: 'Casilla de verificación' },
-  { type: 'radio', label: 'Radio', icon: Circle, description: 'Opciones únicas' },
-  { type: 'file', label: 'Archivo', icon: Upload, description: 'Subida de archivo' },
-  { type: 'separator', label: 'Separador', icon: Minus, description: 'Separador visual' },
+const fieldCategories = [
+  {
+    name: 'Datos Personales',
+    icon: User,
+    fields: [
+      { type: 'text' as FieldType, label: 'Nombre(s) y Apellidos', icon: Type, description: 'Nombre completo del participante' },
+      { type: 'text' as FieldType, label: 'Carné de Identidad / Pasaporte', icon: Hash, description: 'Documento de identidad' },
+      { type: 'email' as FieldType, label: 'Correo Electrónico', icon: Mail, description: 'Email de contacto' },
+      { type: 'phone' as FieldType, label: 'Teléfono', icon: Phone, description: 'Número telefónico' },
+      { type: 'image' as FieldType, label: 'Fotografía', icon: Image, description: 'Foto de perfil' },
+    ],
+  },
+  {
+    name: 'Ubicación',
+    icon: MapPin,
+    fields: [
+      { type: 'select' as FieldType, label: 'País', icon: ChevronDown, description: 'País de residencia' },
+      { type: 'select' as FieldType, label: 'Provincia / Estado', icon: MapPin, description: 'Provincia o estado' },
+      { type: 'text' as FieldType, label: 'Ciudad', icon: MapPin, description: 'Ciudad de residencia' },
+    ],
+  },
+  {
+    name: 'Profesión',
+    icon: Briefcase,
+    fields: [
+      { type: 'select' as FieldType, label: 'Afiliación', icon: Briefcase, description: 'Institución o empresa' },
+      { type: 'select' as FieldType, label: 'Tipo de Afiliación', icon: ChevronDown, description: 'Académica / Profesional / Gubernamental' },
+      { type: 'select' as FieldType, label: 'Sector Económico', icon: ChevronDown, description: 'Sector de trabajo' },
+      { type: 'text' as FieldType, label: 'Cargo / Posición', icon: FileText, description: 'Puesto en la institución' },
+    ],
+  },
+  {
+    name: 'Académico',
+    icon: GraduationCap,
+    fields: [
+      { type: 'select' as FieldType, label: 'Tipo de Participación', icon: Users, description: 'Ponente / Asistente / Poster' },
+      { type: 'select' as FieldType, label: 'Nivel Científico', icon: GraduationCap, description: 'Doctorado / Maestría / Licenciatura' },
+      { type: 'select' as FieldType, label: 'Nivel Educacional', icon: GraduationCap, description: 'Máximo nivel alcanzado' },
+    ],
+  },
+  {
+    name: 'Generales',
+    icon: FileText,
+    fields: [
+      { type: 'radio' as FieldType, label: 'Género', icon: Circle, description: 'Masculino / Femenino / Otro' },
+      { type: 'select' as FieldType, label: 'Idioma Preferido', icon: ChevronDown, description: 'Idioma de comunicación' },
+      { type: 'checkbox' as FieldType, label: 'Acepta Términos', icon: CheckSquare, description: 'Aceptación de condiciones' },
+    ],
+  },
+  {
+    name: 'Avanzados',
+    icon: FileText,
+    fields: [
+      { type: 'text' as FieldType, label: 'Texto Corto', icon: Type, description: 'Campo de texto simple' },
+      { type: 'textarea' as FieldType, label: 'Texto Largo', icon: AlignLeft, description: 'Área de texto múltiples líneas' },
+      { type: 'number' as FieldType, label: 'Número', icon: Hash, description: 'Campo numérico' },
+      { type: 'date' as FieldType, label: 'Fecha', icon: Calendar, description: 'Selector de fecha' },
+      { type: 'select' as FieldType, label: 'Selector', icon: ChevronDown, description: 'Menú desplegable' },
+      { type: 'file' as FieldType, label: 'Archivo', icon: Upload, description: 'Subida de archivo' },
+      { type: 'separator' as FieldType, label: 'Separador', icon: Minus, description: 'Separador visual entre secciones' },
+      { type: 'heading' as FieldType, label: 'Encabezado', icon: Heading, description: 'Título de sección' },
+    ],
+  },
 ];
 
 interface DraggableFieldProps {
@@ -79,37 +124,88 @@ function DraggableField({ field }: DraggableFieldProps) {
       {...listeners}
       {...attributes}
       className={cn(
-        "p-3 rounded-lg border bg-card cursor-grab active:cursor-grabbing transition-all",
+        "flex items-center gap-3 p-2.5 rounded-lg border bg-card cursor-grab active:cursor-grabbing transition-all",
         "hover:border-primary/50 hover:shadow-sm hover:bg-primary/5",
-        isDragging && "opacity-50 ring-2 ring-primary"
+        "group",
+        isDragging && "opacity-50 ring-2 ring-primary shadow-lg"
       )}
     >
-      <div className="flex items-center gap-3">
-        <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
-          <Icon className="h-4 w-4 text-primary" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-medium">{field.label}</p>
-          <p className="text-xs text-muted-foreground truncate">{field.description}</p>
-        </div>
+      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-colors">
+        <Icon className="h-4 w-4 text-primary" />
       </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium leading-tight">{field.label}</p>
+        <p className="text-xs text-muted-foreground leading-tight mt-0.5">{field.description}</p>
+      </div>
+      <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
     </div>
   );
 }
 
+const fieldTypes: FieldConfig[] = fieldCategories.flatMap(cat => cat.fields);
+
 export function FieldLibrary() {
+  const [openCategories, setOpenCategories] = useState<string[]>(['Datos Personales']);
+
+  const toggleCategory = (name: string) => {
+    setOpenCategories(prev => 
+      prev.includes(name) 
+        ? prev.filter(n => n !== name)
+        : [...prev, name]
+    );
+  };
+
   return (
-    <Card className="h-full">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg font-display">Campos Disponibles</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Arrastra los campos al formulario
+    <Card className="h-full border-0 shadow-md">
+      <CardHeader className="pb-4 border-b bg-gradient-to-r from-primary/5 to-transparent">
+        <CardTitle className="text-lg font-display flex items-center gap-2">
+          <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <FileText className="h-4 w-4 text-primary" />
+          </div>
+          Biblioteca de Campos
+        </CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          Arrastra los campos al formulario o haz clic para agregar
         </p>
       </CardHeader>
-      <CardContent className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)]">
-        {fieldTypes.map(field => (
-          <DraggableField key={field.label} field={field} />
-        ))}
+      <CardContent className="p-0 overflow-y-auto max-h-[calc(100vh-280px)]">
+        <div className="divide-y">
+          {fieldCategories.map(category => {
+            const isOpen = openCategories.includes(category.name);
+            const CategoryIcon = category.icon;
+            
+            return (
+              <Collapsible
+                key={category.name}
+                open={isOpen}
+                onOpenChange={() => toggleCategory(category.name)}
+              >
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <CategoryIcon className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="font-medium text-sm">{category.name}</span>
+                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                      {category.fields.length}
+                    </span>
+                  </div>
+                  <ChevronDown className={cn(
+                    "h-4 w-4 text-muted-foreground transition-transform",
+                    isOpen && "rotate-180"
+                  )} />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="px-4 pb-4 space-y-2">
+                    {category.fields.map(field => (
+                      <DraggableField key={`${category.name}-${field.label}`} field={field} />
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })}
+        </div>
       </CardContent>
     </Card>
   );

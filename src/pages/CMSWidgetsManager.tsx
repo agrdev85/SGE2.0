@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { db, CMSWidget } from '@/lib/database';
+import { normalizeText, isDuplicate, findSimilarItems } from '@/lib/utils';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -22,8 +25,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Edit, Trash2, GripVertical } from 'lucide-react';
+import { Plus, Pencil, Trash2, GripVertical, Lightbulb } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 
 const CMSWidgetsManager: React.FC = () => {
   const [widgets, setWidgets] = useState<CMSWidget[]>([]);
@@ -36,6 +40,30 @@ const CMSWidgetsManager: React.FC = () => {
     content: '',
     orderIndex: 0,
     isActive: true,
+  });
+  const [suggestionDialog, setSuggestionDialog] = useState<{
+    isOpen: boolean;
+    newValue: string;
+    suggestions: CMSWidget[];
+    onSelectExisting: () => void;
+    onCreateAnyway: () => void;
+  }>({
+    isOpen: false,
+    newValue: '',
+    suggestions: [],
+    onSelectExisting: () => {},
+    onCreateAnyway: () => {},
+  });
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
+    isOpen: boolean;
+    itemName: string;
+    itemId: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    itemName: '',
+    itemId: '',
+    onConfirm: () => {},
   });
   const { toast } = useToast();
 
@@ -58,6 +86,36 @@ const CMSWidgetsManager: React.FC = () => {
       return;
     }
 
+    if (!editingWidget) {
+      const existe = isDuplicate(widgets, formData.name!, w => w.name);
+      if (existe) {
+        toast({
+          title: 'Error',
+          description: `Ya existe un widget con el nombre "${existe.name}"`,
+          variant: 'destructive',
+        });
+        return;
+      }
+      const similares = findSimilarItems(widgets, formData.name!, w => w.name, 0.5);
+      if (similares.length > 0) {
+        setSuggestionDialog({
+          isOpen: true,
+          newValue: formData.name!,
+          suggestions: similares.map(s => s.item),
+          onSelectExisting: () => setSuggestionDialog(prev => ({ ...prev, isOpen: false })),
+          onCreateAnyway: () => {
+            guardarWidget();
+            setSuggestionDialog(prev => ({ ...prev, isOpen: false }));
+          },
+        });
+        return;
+      }
+    }
+
+    guardarWidget();
+  };
+
+  const guardarWidget = () => {
     try {
       if (editingWidget) {
         db.cmsWidgets.update(editingWidget.id, formData);
@@ -78,7 +136,7 @@ const CMSWidgetsManager: React.FC = () => {
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'No se pudo guardar el widget',
+        description: 'Error al guardar el widget',
         variant: 'destructive',
       });
     }
@@ -90,15 +148,20 @@ const CMSWidgetsManager: React.FC = () => {
     setDialogOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('¿Estás seguro de eliminar este widget?')) {
-      db.cmsWidgets.delete(id);
-      toast({
-        title: 'Éxito',
-        description: 'Widget eliminado correctamente',
-      });
-      loadWidgets();
-    }
+  const handleDelete = (widget: CMSWidget) => {
+    setDeleteConfirmDialog({
+      isOpen: true,
+      itemName: widget.name,
+      itemId: widget.id,
+      onConfirm: () => {
+        db.cmsWidgets.delete(widget.id);
+        toast({
+          title: 'Éxito',
+          description: 'Widget eliminado correctamente',
+        });
+        loadWidgets();
+      },
+    });
   };
 
   const resetForm = () => {
@@ -138,9 +201,9 @@ const CMSWidgetsManager: React.FC = () => {
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" size="icon" onClick={() => handleEdit(widget)}>
-            <Edit className="w-4 h-4" />
+            <Pencil className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => handleDelete(widget.id)}>
+          <Button variant="ghost" size="icon" onClick={() => handleDelete(widget)}>
             <Trash2 className="w-4 h-4 text-red-500" />
           </Button>
         </div>
@@ -355,6 +418,67 @@ const CMSWidgetsManager: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      <Dialog open={suggestionDialog.isOpen} onOpenChange={(open) => !open && setSuggestionDialog(prev => ({ ...prev, isOpen: false }))}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lightbulb className="w-5 h-5 text-yellow-500" />
+              ¿Quiso decir...?
+            </DialogTitle>
+            <DialogDescription>
+              Encontramos widgets similares con nombre "{suggestionDialog.newValue}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-60 overflow-y-auto">
+            {suggestionDialog.suggestions.map((widget) => (
+              <div 
+                key={widget.id} 
+                className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => suggestionDialog.onSelectExisting()}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{widget.name}</p>
+                    <p className="text-sm text-muted-foreground">Tipo: {widget.type}</p>
+                  </div>
+                  <Badge variant="outline">Seleccionar</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => suggestionDialog.onCreateAnyway()}
+              className="w-full sm:w-auto"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Crear "{suggestionDialog.newValue}"
+            </Button>
+            <Button 
+              variant="ghost" 
+              onClick={() => setSuggestionDialog(prev => ({ ...prev, isOpen: false }))}
+              className="w-full sm:w-auto"
+            >
+              Cancelar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmationDialog
+        open={deleteConfirmDialog.isOpen}
+        onOpenChange={(open) => !open && setDeleteConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        title="¿Eliminar widget?"
+        description="¿Está seguro de que desea eliminar este widget? Esta acción no se puede deshacer."
+        itemName={deleteConfirmDialog.itemName}
+        itemType="widget"
+        variant="danger"
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        onConfirm={deleteConfirmDialog.onConfirm}
+      />
     </DashboardLayout>
   );
 };

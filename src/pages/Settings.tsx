@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,17 +10,92 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { ImageUploader } from '@/components/ImageUploader';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { User, Mail, MapPin, Building, Bell, Shield, Loader2, Save, Eye, EyeOff, Phone, Briefcase } from 'lucide-react';
+import { User, Mail, MapPin, Building, Bell, Shield, Loader2, Save, Eye, EyeOff, Phone, Briefcase, Image, Palette, Shuffle, Check, RotateCcw, Trash2, Plus, X, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '@/lib/database';
+import { useWallpaperConfig, AURORA_PRESETS, DEFAULT_CONFIG } from '@/hooks/useWallpaperConfig';
+import { cn } from '@/lib/utils';
+import { DataManagement } from '@/components/settings/DataManagement';
+import { ThemeSettings } from '@/components/settings/ThemeSettings';
 
 const countries = [
   'Cuba', 'México', 'Argentina', 'España', 'Colombia', 'Chile', 'Perú', 'Venezuela', 'Brasil', 'Estados Unidos'
 ];
 
 export default function Settings() {
-  const { user, logout } = useAuth();
+  const { user, logout, isSuperAdmin } = useAuth();
+  const { config: wallpaperConfig, updateConfig, wallpapers, resetConfig, customWallpapers, addCustomWallpaper, removeCustomWallpaper } = useWallpaperConfig();
   const [isLoading, setIsLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        if (base64) {
+          addCustomWallpaper(base64);
+          toast.success('Wallpaper agregado correctamente');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const SliderInput = ({ 
+    label, 
+    value, 
+    onChange, 
+    min, 
+    max, 
+    step = 1, 
+    unit = '',
+    decimals = 0 
+  }: { 
+    label: string; 
+    value: number; 
+    onChange: (v: number) => void; 
+    min: number; 
+    max: number; 
+    step?: number;
+    unit?: string;
+    decimals?: number;
+  }) => {
+    const percentage = ((value - min) / (max - min)) * 100;
+    return (
+      <div className="space-y-2">
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">{label}</span>
+          <span className="font-medium tabular-nums">{value.toFixed(decimals)}{unit}</span>
+        </div>
+        <div className="relative">
+          <div className="h-3 bg-muted rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-primary/80 to-primary rounded-full transition-all duration-150"
+              style={{ width: `${percentage}%` }}
+            />
+          </div>
+          <input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="absolute inset-0 w-full h-3 opacity-0 cursor-pointer"
+          />
+          <div 
+            className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-white dark:bg-slate-800 rounded-full shadow-lg border-2 border-primary pointer-events-none transition-all duration-150"
+            style={{ left: `calc(${percentage}% - 10px)` }}
+          />
+        </div>
+      </div>
+    );
+  };
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -82,8 +157,7 @@ export default function Settings() {
         specialization: formData.specialization,
       });
 
-      // Reload page to update context
-      window.location.reload();
+      window.dispatchEvent(new CustomEvent('sge-auth-refresh'));
       toast.success('Perfil actualizado correctamente');
     } catch (error) {
       toast.error('Error al guardar los cambios');
@@ -135,6 +209,9 @@ export default function Settings() {
             Gestiona tu perfil y preferencias
           </p>
         </div>
+
+        {/* Theme Section */}
+        <ThemeSettings />
 
         {/* Profile Section */}
         <Card>
@@ -311,6 +388,300 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Wallpapers Section - Solo SuperAdmin */}
+        {isSuperAdmin && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Image className="h-5 w-5 text-primary" />
+                <CardTitle className="font-display">Wallpapers</CardTitle>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={resetConfig}
+                className="gap-2 text-muted-foreground hover:text-foreground"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Restaurar valores por defecto
+              </Button>
+            </div>
+            <CardDescription>
+              Personaliza el fondo difuminado de los diálogos del sistema
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Type selector */}
+            <div className="space-y-3">
+              <Label>Tipo de Fondo</Label>
+              <div className="grid grid-cols-3 gap-3">
+                <button
+                  onClick={() => updateConfig({ backgroundType: 'default' })}
+                  className={cn(
+                    'p-4 rounded-xl border-2 transition-all text-left',
+                    wallpaperConfig.backgroundType === 'default'
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/50'
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-8 rounded-lg bg-gradient-to-br from-slate-400/50 to-slate-600/50 backdrop-blur-sm border border-white/20" />
+                    <div>
+                      <p className="font-medium">Default</p>
+                      <p className="text-xs text-muted-foreground">Difuminado vítreo</p>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => updateConfig({ backgroundType: 'wallpaper' })}
+                  className={cn(
+                    'p-4 rounded-xl border-2 transition-all text-left',
+                    wallpaperConfig.backgroundType === 'wallpaper'
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/50'
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-8 rounded-lg bg-gradient-to-br from-blue-400 to-purple-500" />
+                    <div>
+                      <p className="font-medium">Wallpaper</p>
+                      <p className="text-xs text-muted-foreground">Imágenes</p>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => updateConfig({ backgroundType: 'aurora' })}
+                  className={cn(
+                    'p-4 rounded-xl border-2 transition-all text-left',
+                    wallpaperConfig.backgroundType === 'aurora'
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/50'
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-8 rounded-lg bg-gradient-to-br from-green-400 via-cyan-400 to-purple-500 animate-pulse" />
+                    <div>
+                      <p className="font-medium">Aurora</p>
+                      <p className="text-xs text-muted-foreground">Efecto boreal</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Mode selector */}
+            <div className="space-y-3">
+              <Label>Modo</Label>
+              <div className="flex gap-2">
+                {([
+                  { value: 'random' as const, label: 'Aleatorio', icon: Shuffle },
+                  { value: 'sequential' as const, label: 'Secuencial', icon: Palette },
+                  { value: 'fixed' as const, label: 'Fijo', icon: Check },
+                ]).map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => updateConfig({ wallpaperMode: value })}
+                    className={cn(
+                      'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg border transition-all',
+                      wallpaperConfig.wallpaperMode === value
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border hover:border-primary/50'
+                    )}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span className="text-sm font-medium">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Wallpaper selector */}
+            {wallpaperConfig.backgroundType === 'wallpaper' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Seleccionar Wallpaper</Label>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Agregar wallpaper
+                  </Button>
+                </div>
+                
+                {/* Custom wallpapers section */}
+                {customWallpapers.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground font-medium">Wallpapers personalizados</p>
+                    <div className="flex flex-wrap gap-2">
+                      {customWallpapers.map((wp, idx) => (
+                        <div key={`custom-${idx}`} className="relative group">
+                          <button
+                            onClick={() => updateConfig({ fixedWallpaper: wp })}
+                            className={cn(
+                              'relative w-16 h-10 rounded-lg overflow-hidden border-2 transition-all',
+                              wallpaperConfig.fixedWallpaper === wp
+                                ? 'border-primary ring-2 ring-primary/50'
+                                : 'border-border hover:border-muted-foreground/30'
+                            )}
+                          >
+                            <img src={wp} alt="" className="w-full h-full object-cover" />
+                            {wallpaperConfig.fixedWallpaper === wp && (
+                              <div className="absolute inset-0 bg-primary/40 flex items-center justify-center">
+                                <Check className="w-4 h-4 text-white" />
+                              </div>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => removeCustomWallpaper(wp)}
+                            className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <Separator />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-6 gap-2 max-h-48 overflow-y-auto p-1">
+                  {wallpapers.filter(w => !customWallpapers.includes(w)).map((wp, idx) => (
+                    <button
+                      key={`default-${idx}`}
+                      onClick={() => updateConfig({ fixedWallpaper: wp })}
+                      className={cn(
+                        'relative aspect-video rounded-lg overflow-hidden border-2 transition-all hover:scale-105',
+                        wallpaperConfig.fixedWallpaper === wp
+                          ? 'border-primary ring-2 ring-primary/50'
+                          : 'border-transparent hover:border-muted-foreground/30'
+                      )}
+                    >
+                      <img src={wp} alt="" className="w-full h-full object-cover" />
+                      {wallpaperConfig.fixedWallpaper === wp && (
+                        <div className="absolute inset-0 bg-primary/40 flex items-center justify-center">
+                          <Check className="w-5 h-5 text-white drop-shadow-lg" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Aurora preset selector */}
+            {wallpaperConfig.backgroundType === 'aurora' && (
+              <div className="space-y-3">
+                <Label>Estilo de Aurora</Label>
+                <div className="grid grid-cols-4 gap-3">
+                  {AURORA_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      onClick={() => updateConfig({ fixedAuroraPreset: preset.id })}
+                      className={cn(
+                        'relative p-3 rounded-xl border-2 transition-all',
+                        wallpaperConfig.fixedAuroraPreset === preset.id
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-primary/50'
+                      )}
+                    >
+                      <div 
+                        className="w-full h-10 rounded-lg mb-2"
+                        style={{ background: `linear-gradient(135deg, ${preset.colors[0]}, ${preset.colors[1]}, ${preset.colors[2]})` }}
+                      />
+                      <p className="text-xs font-medium text-center">{preset.name}</p>
+                      {wallpaperConfig.fixedAuroraPreset === preset.id && (
+                        <div className="absolute top-1 right-1">
+                          <Check className="w-4 h-4 text-primary" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Effect sliders */}
+            <div className="space-y-4 pt-4 border-t">
+              <Label>Parámetros de Efecto</Label>
+              
+              <SliderInput
+                label="Opacidad del fondo"
+                value={wallpaperConfig.opacity}
+                onChange={(v) => updateConfig({ opacity: v })}
+                min={20}
+                max={100}
+                unit="%"
+              />
+
+              <SliderInput
+                label="Difuminado (blur)"
+                value={wallpaperConfig.blur}
+                onChange={(v) => updateConfig({ blur: v })}
+                min={0}
+                max={20}
+                unit="px"
+              />
+
+              <SliderInput
+                label="Brillo"
+                value={wallpaperConfig.brightness}
+                onChange={(v) => updateConfig({ brightness: v })}
+                min={50}
+                max={150}
+                unit="%"
+              />
+
+              <SliderInput
+                label="Saturación"
+                value={wallpaperConfig.saturation}
+                onChange={(v) => updateConfig({ saturation: v })}
+                min={0}
+                max={200}
+                unit="%"
+              />
+
+              {wallpaperConfig.backgroundType === 'aurora' && (
+                <>
+                  <SliderInput
+                    label="Intensidad Aurora"
+                    value={wallpaperConfig.auroraIntensity}
+                    onChange={(v) => updateConfig({ auroraIntensity: v })}
+                    min={20}
+                    max={100}
+                    unit="%"
+                  />
+
+                  <SliderInput
+                    label="Velocidad Aurora"
+                    value={wallpaperConfig.auroraSpeed}
+                    onChange={(v) => updateConfig({ auroraSpeed: v })}
+                    min={5}
+                    max={30}
+                    unit="s"
+                  />
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        )}
+
+        {/* Data Management Section - Solo SuperAdmin */}
+        {isSuperAdmin && (
+          <DataManagement />
+        )}
 
         {/* Security Section */}
         <Card>

@@ -171,6 +171,25 @@
   }
 }
 
+@layer base {
+  html {
+    transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+  }
+  
+  * {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-duration: 0.3s;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .no-transitions *,
+  .no-transitions *::before,
+  .no-transitions *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
 @layer utilities {
   .animate-fade-in {
     animation: fadeIn 0.5s ease-out forwards;
@@ -182,6 +201,10 @@
 
   .animate-slide-in-right {
     animation: slideInRight 0.3s ease-out forwards;
+  }
+
+  .animate-theme-toggle {
+    animation: themeToggle 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   @keyframes fadeIn {
@@ -208,6 +231,18 @@
     to { 
       opacity: 1;
       transform: translateX(0);
+    }
+  }
+
+  @keyframes themeToggle {
+    0% {
+      transform: scale(1) rotate(0deg);
+    }
+    50% {
+      transform: scale(1.1) rotate(10deg);
+    }
+    100% {
+      transform: scale(1) rotate(0deg);
     }
   }
 }

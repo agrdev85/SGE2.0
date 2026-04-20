@@ -10,8 +10,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { db, ProgramSession, Abstract } from '@/lib/database';
-import { Calendar, Clock, MapPin, Presentation, Coffee, Plus, Edit, Trash2, Download, Sparkles, Users } from 'lucide-react';
+import { Calendar, Clock, MapPin, Presentation, Coffee, Plus, Pencil, Trash2, Download, Sparkles, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 
 export default function ProgramManager() {
   const [sessions, setSessions] = useState<ProgramSession[]>([]);
@@ -30,6 +31,18 @@ export default function ProgramManager() {
     location: '',
     type: 'SESION_ORAL',
     abstracts: [],
+  });
+
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
+    isOpen: boolean;
+    itemName: string;
+    itemId: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    itemName: '',
+    itemId: '',
+    onConfirm: () => {},
   });
 
   useEffect(() => {
@@ -114,12 +127,17 @@ export default function ProgramManager() {
     }
   };
 
-  const handleDeleteSession = (sessionId: string) => {
-    if (confirm('¿Estás seguro de eliminar esta sesión?')) {
-      db.programSessions.delete(sessionId);
-      toast.success('Sesión eliminada');
-      loadData();
-    }
+  const handleDeleteSession = (session: ProgramSession) => {
+    setDeleteConfirmDialog({
+      isOpen: true,
+      itemName: session.title,
+      itemId: session.id,
+      onConfirm: () => {
+        db.programSessions.delete(session.id);
+        toast.success('Sesión eliminada');
+        loadData();
+      },
+    });
   };
 
   const handleAddAbstractToSession = (sessionId: string, abstractId: string) => {
@@ -324,12 +342,12 @@ export default function ProgramManager() {
                                     size="sm"
                                     onClick={() => openEditSessionDialog(session)}
                                   >
-                                    <Edit className="h-4 w-4" />
+                                    <Pencil className="h-4 w-4" />
                                   </Button>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleDeleteSession(session.id)}
+                                    onClick={() => handleDeleteSession(session)}
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
@@ -558,6 +576,19 @@ export default function ProgramManager() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <ConfirmationDialog
+          open={deleteConfirmDialog.isOpen}
+          onOpenChange={(open) => !open && setDeleteConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+          title="¿Eliminar sesión?"
+          description="¿Está seguro de que desea eliminar esta sesión del programa? Esta acción no se puede deshacer."
+          itemName={deleteConfirmDialog.itemName}
+          itemType="sesión"
+          variant="danger"
+          confirmText="Eliminar"
+          cancelText="Cancelar"
+          onConfirm={deleteConfirmDialog.onConfirm}
+        />
       </div>
     </DashboardLayout>
   );

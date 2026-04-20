@@ -15,6 +15,14 @@ export interface CertificateConfig {
   backgroundColor: string;
   textColor: string;
   
+  // Element-specific colors
+  titleColor: string;
+  subtitleColor: string;
+  bodyTextColor: string;
+  headerTextColor: string;
+  footerTextColor: string;
+  userNameColor: string;
+  
   // Content
   title: string;
   subtitle: string;
@@ -56,6 +64,12 @@ export const defaultCertificateConfig: CertificateConfig = {
   secondaryColor: '#059669',
   backgroundColor: '#ffffff',
   textColor: '#1e293b',
+  titleColor: '#1e40af',
+  subtitleColor: '#059669',
+  bodyTextColor: '#1e293b',
+  headerTextColor: '#374151',
+  footerTextColor: '#6b7280',
+  userNameColor: '#1e293b',
   title: 'CERTIFICADO',
   subtitle: '',
   headerText: 'Se certifica que',

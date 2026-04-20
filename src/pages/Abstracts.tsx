@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { abstractsApi, Abstract } from '@/lib/mockApi';
-import { Plus, Search, FileText, Eye, Edit } from 'lucide-react';
+import { Plus, Search, FileText, Eye, Pencil, Edit } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -50,7 +50,7 @@ export default function Abstracts() {
           <div>
             <h1 className="text-3xl font-display font-bold">Mis Resúmenes</h1>
             <p className="text-muted-foreground mt-1">
-              Gestiona tus envíos de trabajos científicos
+              Gestiona tus envíos de trabajos
             </p>
           </div>
           <Button variant="hero" asChild>
@@ -143,7 +143,7 @@ export default function Abstracts() {
                     {abstract.status === 'APROBADO_CON_CAMBIOS' && (
                       <Button variant="default" size="sm" asChild>
                         <Link to={`/abstracts/edit/${abstract.id}`}>
-                          <Edit className="h-4 w-4 mr-1" />
+                          <Pencil className="h-4 w-4 mr-1" />
                           Editar
                         </Link>
                       </Button>

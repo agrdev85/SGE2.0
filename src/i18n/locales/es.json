@@ -1,0 +1,58 @@
+{
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "search": "Buscar",
+    "loading": "Cargando...",
+    "success": "Éxito",
+    "error": "Error",
+    "confirm": "Confirmar",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "previous": "Anterior"
+  },
+  "nav": {
+    "home": "Inicio",
+    "events": "Eventos",
+    "users": "Usuarios",
+    "settings": "Configuración",
+    "profile": "Perfil",
+    "logout": "Cerrar sesión"
+  },
+  "auth": {
+    "login": "Iniciar sesión",
+    "register": "Registrarse",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "forgotPassword": "¿Olvidó su contraseña?",
+    "welcome": "Bienvenido"
+  },
+  "events": {
+    "title": "Eventos",
+    "create": "Crear evento",
+    "edit": "Editar evento",
+    "delete": "Eliminar evento",
+    "name": "Nombre del evento",
+    "date": "Fecha",
+    "location": "Ubicación",
+    "description": "Descripción",
+    "status": "Estado",
+    "active": "Activo",
+    "inactive": "Inactivo"
+  },
+  "wizard": {
+    "step1": "Información Básica",
+    "step2": "Hoteles",
+    "step3": "Participación",
+    "step4": "Transporte",
+    "step5": "Programa Social",
+    "step6": "Nomencladores",
+    "step7": "Configuración Final",
+    "saveAndContinue": "Guardar y Continuar",
+    "previous": "Anterior",
+    "finish": "Finalizar"
+  }
+}

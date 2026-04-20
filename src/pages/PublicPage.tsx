@@ -9,6 +9,23 @@ const PublicPage: React.FC = () => {
   const navigate = useNavigate();
   const [page, setPage] = useState<CMSPage | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setIsDark(mediaQuery.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDark]);
 
   useEffect(() => {
     if (slug) {
@@ -22,10 +39,10 @@ const PublicPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Cargando...</p>
         </div>
       </div>
     );
@@ -33,10 +50,10 @@ const PublicPage: React.FC = () => {
 
   if (!page) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Página no encontrada</h1>
-          <p className="text-gray-600 mb-6">La página que buscas no existe o no está publicada.</p>
+          <h1 className="text-4xl font-bold text-foreground mb-4">Página no encontrada</h1>
+          <p className="text-muted-foreground mb-6">La página que buscas no existe o no está publicada.</p>
           <Button onClick={() => navigate('/')}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Volver al inicio
@@ -60,7 +77,7 @@ const PublicPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="bg-gradient-to-r from-blue-600 to-blue-800 text-white py-16">
         <div className="max-w-7xl mx-auto px-4">
@@ -86,14 +103,14 @@ const PublicPage: React.FC = () => {
             <>
               <div className="lg:col-span-2">
                 <article
-                  className="prose prose-lg max-w-none"
+                  className="prose prose-lg max-w-none dark:prose-invert"
                   dangerouslySetInnerHTML={{ __html: page.content }}
                 />
               </div>
               <aside className="space-y-6">
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="font-bold text-lg mb-4">Información</h3>
-                  <p className="text-sm text-gray-600">
+                <div className="bg-muted p-6 rounded-lg">
+                  <h3 className="font-bold text-lg mb-4 text-foreground">Información</h3>
+                  <p className="text-sm text-muted-foreground">
                     Publicado el {new Date(page.publishedAt || page.createdAt).toLocaleDateString()}
                   </p>
                 </div>
@@ -101,7 +118,7 @@ const PublicPage: React.FC = () => {
             </>
           ) : (
             <article
-              className="prose prose-lg max-w-none"
+              className="prose prose-lg max-w-none dark:prose-invert"
               dangerouslySetInnerHTML={{ __html: page.content }}
             />
           )}

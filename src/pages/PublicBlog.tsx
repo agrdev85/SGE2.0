@@ -15,6 +15,23 @@ const PublicBlog: React.FC = () => {
   const [featuredArticles, setFeaturedArticles] = useState<CMSArticle[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setIsDark(mediaQuery.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDark]);
 
   useEffect(() => {
     loadArticles();
@@ -40,7 +57,7 @@ const PublicBlog: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-blue-600 to-blue-800 text-white py-20">
         <div className="max-w-7xl mx-auto px-4">
@@ -52,13 +69,13 @@ const PublicBlog: React.FC = () => {
           {/* Search Bar */}
           <div className="max-w-2xl">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
               <Input
                 type="text"
                 placeholder="Buscar artículos..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-white text-gray-900"
+                className="pl-10 bg-background text-foreground"
               />
             </div>
           </div>
@@ -90,15 +107,15 @@ const PublicBlog: React.FC = () => {
                       </Badge>
                       <Badge className="bg-yellow-500">Destacado</Badge>
                     </div>
-                    <CardTitle className="line-clamp-2">{article.title}</CardTitle>
+                    <CardTitle className="line-clamp-2 text-foreground">{article.title}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {article.excerpt && (
-                      <p className="text-gray-600 text-sm line-clamp-3 mb-4">
+                      <p className="text-muted-foreground text-sm line-clamp-3 mb-4">
                         {article.excerpt}
                       </p>
                     )}
-                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         {new Date(article.publishedAt || article.createdAt).toLocaleDateString()}
@@ -122,13 +139,13 @@ const PublicBlog: React.FC = () => {
           {/* Articles Grid */}
           <div className="lg:col-span-3">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">
+              <h2 className="text-2xl font-bold text-foreground">
                 {selectedCategory 
                   ? `Categoría: ${getCategoryName(selectedCategory)}`
                   : 'Todos los Artículos'
                 }
               </h2>
-              <p className="text-gray-600">{filteredArticles.length} artículos</p>
+              <p className="text-muted-foreground">{filteredArticles.length} artículos</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -146,15 +163,15 @@ const PublicBlog: React.FC = () => {
                       <Badge variant="secondary" className="w-fit mb-2">
                         {getCategoryName(article.categoryId)}
                       </Badge>
-                      <CardTitle className="line-clamp-2">{article.title}</CardTitle>
+                      <CardTitle className="line-clamp-2 text-foreground">{article.title}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       {article.excerpt && (
-                        <p className="text-gray-600 text-sm line-clamp-3 mb-4">
+                        <p className="text-muted-foreground text-sm line-clamp-3 mb-4">
                           {article.excerpt}
                         </p>
                       )}
-                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
                           {new Date(article.publishedAt || article.createdAt).toLocaleDateString()}
@@ -181,7 +198,7 @@ const PublicBlog: React.FC = () => {
 
             {filteredArticles.length === 0 && (
               <div className="text-center py-12">
-                <p className="text-gray-600 text-lg">No se encontraron artículos</p>
+                <p className="text-muted-foreground text-lg">No se encontraron artículos</p>
               </div>
             )}
           </div>

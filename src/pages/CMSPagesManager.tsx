@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, CMSPage } from '@/lib/database';
+import { normalizeText, isDuplicate, findSimilarItems } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +18,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Table,
@@ -39,15 +42,41 @@ import {
   X,
   Image as ImageIcon,
   Code,
-  Layout
+  Layout,
+  Lightbulb
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 
 const CMSPagesManager: React.FC = () => {
   const [pages, setPages] = useState<CMSPage[]>([]);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<Partial<CMSPage> | null>(null);
   const [editorMode, setEditorMode] = useState<'visual' | 'html'>('visual');
+  const [suggestionDialog, setSuggestionDialog] = useState<{
+    isOpen: boolean;
+    newValue: string;
+    suggestions: CMSPage[];
+    onSelectExisting: () => void;
+    onCreateAnyway: () => void;
+  }>({
+    isOpen: false,
+    newValue: '',
+    suggestions: [],
+    onSelectExisting: () => {},
+    onCreateAnyway: () => {},
+  });
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
+    isOpen: boolean;
+    itemName: string;
+    itemType: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    itemName: '',
+    itemType: '',
+    onConfirm: () => {},
+  });
 
   useEffect(() => {
     loadPages();
@@ -82,6 +111,32 @@ const CMSPagesManager: React.FC = () => {
       return;
     }
 
+    if (!currentPage.id) {
+      const existeTitulo = isDuplicate(pages, currentPage.title!, p => p.title);
+      if (existeTitulo) {
+        toast.error(`Ya existe una página con el título "${existeTitulo.title}"`);
+        return;
+      }
+      const similares = findSimilarItems(pages, currentPage.title!, p => p.title, 0.6);
+      if (similares.length > 0) {
+        setSuggestionDialog({
+          isOpen: true,
+          newValue: currentPage.title!,
+          suggestions: similares.map(s => s.item),
+          onSelectExisting: () => setSuggestionDialog(prev => ({ ...prev, isOpen: false })),
+          onCreateAnyway: () => {
+            guardarPagina();
+            setSuggestionDialog(prev => ({ ...prev, isOpen: false }));
+          },
+        });
+        return;
+      }
+    }
+
+    guardarPagina();
+  };
+
+  const guardarPagina = () => {
     try {
       if (currentPage.id) {
         db.cmsPages.update(currentPage.id, currentPage);
@@ -91,16 +146,23 @@ const CMSPagesManager: React.FC = () => {
       setIsEditorOpen(false);
       setCurrentPage(null);
       loadPages();
+      toast.success(currentPage.id ? 'Página actualizada' : 'Página creada');
     } catch (error) {
       toast.error('Error al guardar la página');
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('¿Estás seguro de eliminar esta página?')) {
-      db.cmsPages.delete(id);
-      loadPages();
-    }
+  const handleDelete = (page: CMSPage) => {
+    setDeleteConfirmDialog({
+      isOpen: true,
+      itemName: page.title,
+      itemType: 'página',
+      onConfirm: () => {
+        db.cmsPages.delete(page.id);
+        loadPages();
+        toast.success('Página eliminada');
+      },
+    });
   };
 
   const handlePublish = (id: string) => {
@@ -225,7 +287,7 @@ const CMSPagesManager: React.FC = () => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDelete(page.id)}
+                        onClick={() => handleDelete(page)}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -522,6 +584,67 @@ const CMSPagesManager: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={suggestionDialog.isOpen} onOpenChange={(open) => !open && setSuggestionDialog(prev => ({ ...prev, isOpen: false }))}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lightbulb className="w-5 h-5 text-yellow-500" />
+              ¿Quiso decir...?
+            </DialogTitle>
+            <DialogDescription>
+              Encontramos páginas similares con título "{suggestionDialog.newValue}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-60 overflow-y-auto">
+            {suggestionDialog.suggestions.map((page) => (
+              <div 
+                key={page.id} 
+                className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => suggestionDialog.onSelectExisting()}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{page.title}</p>
+                    <p className="text-sm text-muted-foreground">/{page.slug}</p>
+                  </div>
+                  <Badge variant="outline">Seleccionar</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => suggestionDialog.onCreateAnyway()}
+              className="w-full sm:w-auto"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Crear "{suggestionDialog.newValue}"
+            </Button>
+            <Button 
+              variant="ghost" 
+              onClick={() => setSuggestionDialog(prev => ({ ...prev, isOpen: false }))}
+              className="w-full sm:w-auto"
+            >
+              Cancelar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmationDialog
+        open={deleteConfirmDialog.isOpen}
+        onOpenChange={(open) => !open && setDeleteConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        title={`¿Eliminar ${deleteConfirmDialog.itemType}?`}
+        description={`¿Está seguro de que desea eliminar esta ${deleteConfirmDialog.itemType}? Esta acción no se puede deshacer.`}
+        itemName={deleteConfirmDialog.itemName}
+        itemType={deleteConfirmDialog.itemType}
+        variant="danger"
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        onConfirm={deleteConfirmDialog.onConfirm}
+      />
     </div>
   );
 };

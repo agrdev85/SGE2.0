@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { db, Abstract, Thematic } from '@/lib/database';
-import { ClipboardCheck, FileText, Loader2, CheckCircle, XCircle, AlertCircle, Edit } from 'lucide-react';
+import { ClipboardCheck, FileText, Loader2, CheckCircle, XCircle, AlertCircle, Pencil, Edit } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -247,7 +247,7 @@ export default function Review() {
                           size="sm"
                           onClick={() => openThematicDialog(abstract)}
                         >
-                          <Edit className="h-3 w-3 mr-1" />
+                          <Pencil className="h-3 w-3 mr-1" />
                           Cambiar
                         </Button>
                       </div>

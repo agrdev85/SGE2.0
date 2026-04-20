@@ -11,6 +11,8 @@ interface DesignCanvasProps {
   device: 'desktop' | 'mobile';
   interactive?: boolean;
   className?: string;
+  colorOverrides?: Record<string, string>;
+  bgColorOverrides?: Record<string, string>;
 }
 
 export function DesignCanvas({
@@ -20,7 +22,9 @@ export function DesignCanvas({
   previewData = {},
   device,
   interactive = true,
-  className
+  className,
+  colorOverrides = {},
+  bgColorOverrides = {}
 }: DesignCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -36,8 +40,11 @@ export function DesignCanvas({
   const maxWidth = device === 'mobile' ? 320 : 500;
   const maxHeight = device === 'mobile' ? 480 : 600;
 
-  const getColor = (colorKey?: string): string => {
+  const getColor = (colorKey?: string, elementId?: string): string => {
     if (!colorKey) return 'transparent';
+    if (elementId && colorOverrides[elementId]) {
+      return colorOverrides[elementId];
+    }
     switch (colorKey) {
       case 'primary': return config.primaryColor;
       case 'secondary': return config.secondaryColor;
@@ -45,6 +52,14 @@ export function DesignCanvas({
       case 'muted': return '#94a3b8';
       default: return colorKey.startsWith('#') ? colorKey : config.textColor;
     }
+  };
+
+  const getBgColor = (colorKey?: string, elementId?: string): string => {
+    if (!colorKey) return 'transparent';
+    if (elementId && bgColorOverrides[elementId]) {
+      return bgColorOverrides[elementId];
+    }
+    return getColor(colorKey, elementId);
   };
 
   const replaceTemplateVars = (content: string): string => {
@@ -129,6 +144,9 @@ export function DesignCanvas({
   const renderElement = (element: CanvasElement) => {
     if (!element.enabled) return null;
 
+    const textColor = getColor(element.style.color, element.id);
+    const backgroundColor = getBgColor(element.style.backgroundColor, element.id);
+
     const style: React.CSSProperties = {
       position: 'absolute',
       left: `${element.x - element.width / 2}%`,
@@ -141,8 +159,8 @@ export function DesignCanvas({
       fontSize: element.style.fontSize ? `${element.style.fontSize * (device === 'mobile' ? 0.6 : 0.8)}px` : undefined,
       fontWeight: element.style.fontWeight,
       fontStyle: element.style.fontStyle,
-      color: getColor(element.style.color),
-      backgroundColor: getColor(element.style.backgroundColor),
+      color: textColor,
+      backgroundColor: backgroundColor,
       borderRadius: element.style.borderRadius,
       padding: element.style.padding,
       cursor: interactive && !element.locked ? 'move' : 'default',
@@ -164,11 +182,11 @@ export function DesignCanvas({
         className="group"
       >
         {element.type === 'shape' && (
-          <div className="absolute inset-0 rounded" style={{ backgroundColor: getColor(element.style.backgroundColor) }} />
+          <div className="absolute inset-0 rounded" style={{ backgroundColor: getBgColor(element.style.backgroundColor, element.id) }} />
         )}
         
         {element.type === 'line' && (
-          <div className="absolute inset-x-0 top-1/2 h-px" style={{ backgroundColor: getColor(element.style.backgroundColor) }} />
+          <div className="absolute inset-x-0 top-1/2 h-px" style={{ backgroundColor: getBgColor(element.style.backgroundColor, element.id) }} />
         )}
 
         {element.type === 'text' && (

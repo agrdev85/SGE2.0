@@ -5,7 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 interface FormPreviewProps {
@@ -74,7 +74,7 @@ export function FormPreview({ fields, event, device, type = 'event', fullScreen 
               {field.label}
               {field.isRequired && <span className="text-destructive ml-1">*</span>}
             </Label>
-            <select className="w-full mt-1.5 h-10 rounded-md border bg-background px-3 text-sm">
+            <select className="w-full mt-1.5 h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
               <option value="">Seleccionar...</option>
               {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
             </select>
@@ -156,7 +156,7 @@ export function FormPreview({ fields, event, device, type = 'event', fullScreen 
   };
 
   return (
-    <Card className={cn("overflow-hidden mx-auto", containerWidth)}>
+    <Card className={cn("overflow-hidden mx-auto border-2", containerWidth)}>
       {/* Event Header */}
       <div
         className="relative h-32 bg-cover bg-center"
@@ -183,7 +183,7 @@ export function FormPreview({ fields, event, device, type = 'event', fullScreen 
       </div>
 
       {/* Form Content */}
-      <div className="p-6" style={{ backgroundColor: event.backgroundColor || '#ffffff' }}>
+      <CardContent className="p-6 bg-background">
         {fields.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <p className="text-lg">Sin campos configurados</p>
@@ -209,7 +209,7 @@ export function FormPreview({ fields, event, device, type = 'event', fullScreen 
             </div>
           </>
         )}
-      </div>
+      </CardContent>
     </Card>
   );
 }

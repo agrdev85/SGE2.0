@@ -40,6 +40,12 @@ export interface DesignConfig {
 export interface CertificateDesignConfig extends DesignConfig {
   format: 'a4' | 'letter' | 'legal';
   title: string;
+  titleColor: string;
+  subtitleColor: string;
+  bodyTextColor: string;
+  headerTextColor: string;
+  footerTextColor: string;
+  userNameColor: string;
   headerText: string;
   bodyTemplate: string;
   footerText: string;
@@ -54,6 +60,11 @@ export interface CredentialDesignConfig extends DesignConfig {
   showAffiliation: boolean;
   showCountry: boolean;
   qrDataFields: string[];
+  nameColor: string;
+  roleColor: string;
+  affiliationColor: string;
+  headerBgColor: string;
+  footerBgColor: string;
 }
 
 export const defaultCertificateElements: CanvasElement[] = [
