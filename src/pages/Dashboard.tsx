@@ -14,8 +14,7 @@ import { FileText, CheckCircle, Clock, XCircle, Calendar, Plus, ArrowRight, MapP
 import { Link } from 'react-router-dom';
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const { selectedEvent, userEvents, setSelectedEventId, showEventSelector, setShowEventSelector, isFirstVisit } = useEventContext();
+  const { user, selectedEvent, userEvents, setSelectedEventId, showEventSelector, setShowEventSelector, isFirstVisit, eventChangeTrigger } = useEventContext();
   const { t } = useLanguage();
   const [stats, setStats] = useState({ totalAbstracts: 0, pendingReview: 0, approved: 0, rejected: 0, events: 0 });
   const [recentAbstracts, setRecentAbstracts] = useState<Abstract[]>([]);
@@ -34,7 +33,7 @@ export default function Dashboard() {
       } finally { setIsLoading(false); }
     };
     loadData();
-  }, [user]);
+  }, [user, selectedEvent, eventChangeTrigger]);
 
   const roleGreetings: Record<string, string> = {
     USER: t('dashboard.role.participant'), REVIEWER: t('dashboard.role.reviewer'), COMMITTEE: t('dashboard.role.committee'), ADMIN: t('dashboard.role.admin'),

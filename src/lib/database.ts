@@ -198,13 +198,15 @@ export interface Event {
   userFormFields?: FormField[];
 }
 
-// Session - Time occurrence of a simple event
+// Session - Time occurrence of a simple event or subevento
 export interface EventSession {
   id: string;
-  eventId: string; // Simple event ID
+  eventId: string; // Macro event ID
+  subEventoId?: string; // SubEvento ID (optional - if session belongs to a subevento)
   date: string;
   startTime: string;
   endTime: string;
+  salonId?: string; // Salon ID
   isActive: boolean;
   createdAt: string;
 }
@@ -1381,6 +1383,11 @@ class Database {
         .filter(s => s.eventId === eventId)
         .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)),
 
+    getBySubEvento: (subEventoId: string): EventSession[] =>
+      this.getCollection<EventSession>('eventSessions')
+        .filter(s => s.subEventoId === subEventoId)
+        .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)),
+
     getById: (id: string): EventSession | undefined =>
       this.getCollection<EventSession>('eventSessions').find(s => s.id === id),
 
@@ -1510,8 +1517,22 @@ class Database {
     getByEvent: (eventId: string): Abstract[] => 
       this.getCollection<Abstract>('abstracts').filter(a => a.eventId === eventId),
     
-    getApproved: (eventId: string): Abstract[] => 
-      this.getCollection<Abstract>('abstracts').filter(a => a.eventId === eventId && a.status === 'APROBADO'),
+    // Get all abstracts for a MacroEvent (all abstracts from all simple events in the macro event)
+    getByMacroEvent: (macroEventId: string): Abstract[] => {
+      const simpleEvents = this.events.getAll().filter(e => e.macroEventId === macroEventId);
+      const eventIds = simpleEvents.map(e => e.id);
+      return this.getCollection<Abstract>('abstracts').filter(a => eventIds.includes(a.eventId));
+    },
+    
+    // Get approved abstracts for a MacroEvent
+    getApproved: (eventId: string): Abstract[] => {
+      // Check if it's a macroEvent or simple event
+      const isMacro = !!this.macroEvents.getById(eventId);
+      if (isMacro) {
+        return this.abstracts.getByMacroEvent(eventId).filter(a => a.status === 'APROBADO');
+      }
+      return this.getCollection<Abstract>('abstracts').filter(a => a.eventId === eventId && a.status === 'APROBADO');
+    },
     
     getPending: (): Abstract[] => 
       this.getCollection<Abstract>('abstracts').filter(a => a.status === 'EN_PROCESO'),
@@ -2052,90 +2073,67 @@ class Database {
       return undefined;
     },
     
-    // Generate program proposal from approved abstracts
+    // Generate program proposal from EventSessions of subEventos
     generateProposal: (eventId: string): ProgramSession[] => {
-      const event = this.events.getById(eventId);
-      if (!event) throw new Error('Evento no encontrado');
+      const event = this.macroEvents.getById(eventId);
+      if (!event) throw new Error(`Evento no encontrado: ${eventId}`);
       
-      const approvedAbstracts = this.abstracts.getApproved(eventId);
-      const thematics = this.thematics.getByEvent(eventId);
+      const subEventos = this.subEventos.getByEvento(eventId).filter(se => se.isActive);
       
       // Delete existing sessions
       const existingSessions = this.programSessions.getByEvent(eventId);
       existingSessions.forEach(s => this.programSessions.delete(s.id));
       
       const sessions: ProgramSession[] = [];
-      const startDate = new Date(event.startDate);
-      const endDate = new Date(event.endDate);
-      const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      
       let orderIndex = 0;
       
-      // Group abstracts by thematic
-      const abstractsByThematic = new Map<string, Abstract[]>();
-      approvedAbstracts.forEach(abstract => {
-        const key = abstract.thematicId || 'sin-tematica';
-        if (!abstractsByThematic.has(key)) {
-          abstractsByThematic.set(key, []);
-        }
-        abstractsByThematic.get(key)!.push(abstract);
-      });
-      
-      // Create sessions for each day
-      for (let day = 0; day < days; day++) {
-        const currentDate = new Date(startDate);
-        currentDate.setDate(startDate.getDate() + day);
-        const dateStr = currentDate.toISOString().split('T')[0];
+      // Para cada subEvento, buscar sus EventSessions (sesiones reales con fecha/hora)
+      subEventos.forEach(subEvento => {
+        const eventSessions = this.eventSessions.getBySubEvento(subEvento.id)
+          .filter(es => es.isActive);
         
-        // Morning session (9:00 - 12:00)
-        let sessionIndex = 0;
-        abstractsByThematic.forEach((abstracts, thematicId) => {
-          if (abstracts.length === 0) return;
-          
-          const thematic = thematics.find(t => t.id === thematicId);
-          const abstractsForSession = abstracts.splice(0, Math.min(6, abstracts.length));
-          
-          if (abstractsForSession.length > 0) {
+        if (eventSessions.length > 0) {
+          // Usar las fechas/horas reales de las EventSessions
+          eventSessions.forEach(es => {
             const session = this.programSessions.create({
               eventId,
-              title: thematic ? `Sesión: ${thematic.name}` : 'Sesión General',
-              thematicId: thematic?.id,
-              date: dateStr,
-              startTime: sessionIndex === 0 ? '09:00' : '14:00',
-              endTime: sessionIndex === 0 ? '12:00' : '17:00',
-              location: `Sala ${String.fromCharCode(65 + sessionIndex)}`,
+              title: subEvento.nombre,
+              date: es.date,
+              startTime: es.startTime,
+              endTime: es.endTime,
+              location: es.salonId ? this.salones.getById(es.salonId)?.nombre || 'Por asignar' : 'Por asignar',
               type: 'SESION_ORAL',
-              abstracts: abstractsForSession.map(a => a.id),
+              abstracts: [],
               orderIndex: orderIndex++,
             });
-            
             sessions.push(session);
+          });
+        } else {
+          // Si no hay EventSessions, crear sesiones basadas en las fechas del macro evento
+          const startDate = new Date(event.startDate);
+          const endDate = new Date(event.endDate);
+          const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          
+          for (let day = 0; day < days; day++) {
+            const currentDate = new Date(startDate);
+            currentDate.setDate(startDate.getDate() + day);
+            const dateStr = currentDate.toISOString().split('T')[0];
             
-            // Update abstracts with session
-            abstractsForSession.forEach(a => {
-              this.abstracts.update(a.id, { sessionId: session.id });
+            const session = this.programSessions.create({
+              eventId,
+              title: subEvento.nombre,
+              date: dateStr,
+              startTime: '09:00',
+              endTime: '12:00',
+              location: 'Por asignar',
+              type: 'SESION_ORAL',
+              abstracts: [],
+              orderIndex: orderIndex++,
             });
-            
-            sessionIndex++;
-            if (sessionIndex >= 2) return; // Max 2 sessions per day
+            sessions.push(session);
           }
-        });
-        
-        // Add break
-        if (sessionIndex > 0) {
-          sessions.push(this.programSessions.create({
-            eventId,
-            title: 'Almuerzo',
-            date: dateStr,
-            startTime: '12:00',
-            endTime: '14:00',
-            location: 'Cafetería',
-            type: 'BREAK',
-            abstracts: [],
-            orderIndex: orderIndex++,
-          }));
         }
-      }
+      });
       
       return sessions;
     },

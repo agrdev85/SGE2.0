@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { useEventContext } from '@/contexts/EventContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { JuryAssignmentManager } from '@/components/JuryAssignmentManager';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,18 +26,23 @@ const categories = [
 ] as const;
 
 export default function Committee() {
+  const { selectedEventId, eventChangeTrigger } = useEventContext();
   const [abstracts, setAbstracts] = useState<Abstract[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedAbstract, setSelectedAbstract] = useState<Abstract | null>(null);
 
   useEffect(() => {
     loadAbstracts();
-  }, []);
+  }, [selectedEventId, eventChangeTrigger]);
 
   const loadAbstracts = async () => {
     try {
-      const data = db.abstracts.getApproved('1');
+      setIsLoading(true);
+      // Cargar abstracts aprobados del evento seleccionado
+      const data = selectedEventId ? db.abstracts.getApproved(selectedEventId) : [];
       setAbstracts(data);
+    } catch (e) {
+      console.error('Error loading abstracts:', e);
     } finally {
       setIsLoading(false);
     }

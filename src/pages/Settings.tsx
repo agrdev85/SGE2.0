@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { ImageUploader } from '@/components/ImageUploader';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { User, Mail, MapPin, Building, Bell, Shield, Loader2, Save, Eye, EyeOff, Phone, Briefcase, Image, Palette, Shuffle, Check, RotateCcw, Trash2, Plus, X, Sparkles } from 'lucide-react';
+import { User, Mail, MapPin, Building, Bell, Shield, Loader2, Save, Eye, EyeOff, Phone, Briefcase, Image, Palette, Shuffle, Check, RotateCcw, Trash2, Plus, X, Sparkles, Calendar, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '@/lib/database';
 import { useWallpaperConfig, AURORA_PRESETS, DEFAULT_CONFIG } from '@/hooks/useWallpaperConfig';
@@ -123,6 +123,24 @@ export default function Settings() {
     reviews: true,
     events: false,
   });
+
+  const [registeredEvents, setRegisteredEvents] = useState<Array<{id: string, name: string, status: string, registeredAt: string}>>([]);
+
+  useEffect(() => {
+    if (user) {
+      const regs = db.eventRegistrations.getByUser(user.id);
+      const events = regs.map(r => {
+        const evt = db.events.getById(r.eventId);
+        return {
+          id: r.eventId,
+          name: evt?.name || 'Evento desconocido',
+          status: r.status,
+          registeredAt: r.createdAt,
+        };
+      });
+      setRegisteredEvents(events);
+    }
+  }, [user]);
 
   // Load user data on mount
   useEffect(() => {
@@ -386,6 +404,57 @@ export default function Settings() {
                 onCheckedChange={(checked) => setNotifications({ ...notifications, events: checked })}
               />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Registered Events Section */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-primary" />
+              <CardTitle className="font-display">Mis Eventos</CardTitle>
+            </div>
+            <CardDescription>
+              Eventos en los que te has inscrito
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {registeredEvents.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No te has inscrito en ningún evento todavía.</p>
+            ) : (
+              <div className="space-y-3">
+                {registeredEvents.map(evt => (
+                  <div key={evt.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Calendar className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{evt.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Inscrito el {new Date(evt.registeredAt).toLocaleDateString('es-ES')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        'text-xs px-2 py-1 rounded-full',
+                        evt.status === 'registered' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+                        evt.status === 'confirmed' && 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                        evt.status === 'cancelled' && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                      )}>
+                        {evt.status === 'registered' ? 'Registrado' : evt.status === 'confirmed' ? 'Confirmado' : 'Cancelado'}
+                      </span>
+                      <Button variant="ghost" size="icon" asChild>
+                        <a href={`/event/${evt.id}`} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

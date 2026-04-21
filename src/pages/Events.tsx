@@ -69,6 +69,7 @@ export default function Events() {
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [isSubeventoModalOpen, setIsSubeventoModalOpen] = useState(false);
   const [editingSubeventoId, setEditingSubeventoId] = useState<string | null>(null);
+  const [selectedSubEventoForSessions, setSelectedSubEventoForSessions] = useState<SubEvento | null>(null);
   const [isSessionDialogOpen, setIsSessionDialogOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<EventSession | null>(null);
 
@@ -81,7 +82,7 @@ export default function Events() {
     name: '', nameEn: '', description: '', macroEventId: '',
     bannerImageUrl: '', backgroundImageUrl: '',
   });
-  const [sessionForm, setSessionForm] = useState({ eventId: '', date: '', startTime: '', endTime: '' });
+  const [sessionForm, setSessionForm] = useState({ eventId: '', subEventoId: '', salonId: '', date: '', startTime: '', endTime: '', isActive: true });
   const [activeEventTab, setActiveEventTab] = useState('basic');
   const [activeDetailTab, setActiveDetailTab] = useState('info');
 
@@ -114,33 +115,38 @@ export default function Events() {
     return () => window.removeEventListener('sge-data-change', handleDataChange);
   }, [currentUser?.id]);
 
-  const loadAll = () => {
-    let allMacros = db.macroEvents.getAll();
-    let allEvents = db.events.getAll();
+const loadAll = () => {
+    try {
+      let allMacros = db.macroEvents.getAll();
+      let allEvents = db.events.getAll();
 
-    // Data isolation per permission matrix
-    if (currentUser) {
-      if (currentUser.role === 'ADMIN_RECEPTIVO' || currentUser.role === 'LECTOR_RECEPTIVO') {
-        allMacros = allMacros.filter(me => !(me as any).receptivoId || (me as any).receptivoId === currentUser.receptivoId);
-        allEvents = allEvents.filter(e => {
-          const macro = allMacros.find(m => m.id === e.macroEventId);
-          return !!macro;
-        });
-      } else if (currentUser.role === 'ADMIN_EMPRESA' || currentUser.role === 'LECTOR_EMPRESA') {
-        allMacros = allMacros.filter(me => !(me as any).empresaId || (me as any).empresaId === currentUser.empresaId);
-        allEvents = allEvents.filter(e => {
-          const macro = allMacros.find(m => m.id === e.macroEventId);
-          return !!macro;
-        });
+      // Data isolation per permission matrix
+      if (currentUser) {
+        if (currentUser.role === 'ADMIN_RECEPTIVO' || currentUser.role === 'LECTOR_RECEPTIVO') {
+          allMacros = allMacros.filter(me => !(me as any).receptivoId || (me as any).receptivoId === currentUser.receptivoId);
+          allEvents = allEvents.filter(e => {
+            const macro = allMacros.find(m => m.id === e.macroEventId);
+            return !!macro;
+          });
+        } else if (currentUser.role === 'ADMIN_EMPRESA' || currentUser.role === 'LECTOR_EMPRESA') {
+          allMacros = allMacros.filter(me => !(me as any).empresaId || (me as any).empresaId === currentUser.empresaId);
+          allEvents = allEvents.filter(e => {
+            const macro = allMacros.find(m => m.id === e.macroEventId);
+            return !!macro;
+          });
+        }
       }
       // COORDINADOR_HOTEL ve todos los eventos (como SuperAdmin)
+      
+      setMacroEvents(allMacros);
+      setEvents(allEvents);
+      setSessions(db.eventSessions.getAll());
+      setSubEventos(db.subEventos.getAll());
+      setIsLoading(false);
+    } catch (e) {
+      console.error('Error loading data:', e);
+      setIsLoading(false);
     }
-
-    setMacroEvents(allMacros);
-    setEvents(allEvents);
-    setSessions(db.eventSessions.getAll());
-    setSubEventos(db.subEventos.getAll());
-    setIsLoading(false);
   };
 
   const canEdit = !isLector && !isCoordinadorHotel;
@@ -262,38 +268,55 @@ export default function Events() {
   // ===== SESSION HANDLERS =====
   const openCreateSession = (eventId?: string) => {
     setEditingSession(null);
-    setSessionForm({ eventId: eventId || '', date: '', startTime: '', endTime: '' });
+    setSessionForm({ eventId: eventId || '', subEventoId: '', salonId: '', date: '', startTime: '', endTime: '', isActive: true });
     setIsSessionDialogOpen(true);
   };
 
-  const openEditSession = (session: EventSession) => {
-    setEditingSession(session);
-    setSessionForm({ eventId: session.eventId, date: session.date, startTime: session.startTime, endTime: session.endTime });
-    setIsSessionDialogOpen(true);
-  };
+  // Update sessionForm when editingSession changes
+  useEffect(() => {
+    if (editingSession) {
+      setSessionForm({
+        eventId: editingSession.eventId,
+        subEventoId: editingSession.subEventoId || '',
+        salonId: editingSession.salonId || '',
+        date: editingSession.date,
+        startTime: editingSession.startTime,
+        endTime: editingSession.endTime,
+        isActive: editingSession.isActive,
+      });
+    }
+  }, [editingSession]);
 
   const handleSaveSession = () => {
-    if (!sessionForm.eventId || !sessionForm.date || !sessionForm.startTime || !sessionForm.endTime) {
+    if (!sessionForm.date || !sessionForm.startTime || !sessionForm.endTime) {
       toast.error('Completa todos los campos'); return;
     }
+    if (!selectedSubEventoForSessions) {
+      toast.error('Selecciona un Sub Evento'); return;
+    }
     if (sessionForm.endTime <= sessionForm.startTime) { toast.error('La hora de fin debe ser posterior a la de inicio'); return; }
-    const event = db.events.getById(sessionForm.eventId);
-    if (event) {
-      const macro = db.macroEvents.getById(event.macroEventId);
-      if (macro) {
-        const sD = new Date(sessionForm.date), mS = new Date(macro.startDate.split('T')[0]), mE = new Date(macro.endDate.split('T')[0]);
-        if (sD < mS || sD > mE) { toast.error('La fecha de la sesión debe estar dentro del rango del Evento'); return; }
-      }
+    if (selectedMacro) {
+      const sD = new Date(sessionForm.date), mS = new Date(selectedMacro.startDate.split('T')[0]), mE = new Date(selectedMacro.endDate.split('T')[0]);
+      if (sD < mS || sD > mE) { toast.error('La fecha de la sesión debe estar dentro del rango del Evento'); return; }
     }
     try {
-      if (editingSession) { db.eventSessions.update(editingSession.id, sessionForm); toast.success('Sesión actualizada'); }
-      else { db.eventSessions.create({ ...sessionForm, isActive: true }); toast.success('Sesión creada'); }
+      const sessionData = {
+        eventId: selectedMacro.id,
+        subEventoId: selectedSubEventoForSessions.id,
+        date: sessionForm.date,
+        startTime: sessionForm.startTime,
+        endTime: sessionForm.endTime,
+        salonId: sessionForm.salonId || undefined,
+        isActive: sessionForm.isActive,
+      };
+      if (editingSession) { db.eventSessions.update(editingSession.id, sessionData); toast.success('Sesión actualizada'); }
+      else { db.eventSessions.create(sessionData as any); toast.success('Sesión creada'); }
       setIsSessionDialogOpen(false);
       loadAll();
     } catch (e: any) { toast.error(e.message || 'Error'); }
   };
 
-  const handleDeleteSession = async (session: EventSession) => {
+  const handleDeleteSession = async (sessionId: string) => {
     const confirmed = await ConfirmationDialog.show({
       title: 'Eliminar Sesión',
       description: '¿Está seguro de que desea eliminar esta sesión? Esta acción no se puede deshacer.',
@@ -302,11 +325,10 @@ export default function Events() {
       cancelText: 'Cancelar',
     });
     if (confirmed) {
-      db.eventSessions.delete(session.id);
+      db.eventSessions.delete(sessionId);
       await SuccessDialog.show({
         title: '¡Eliminado!',
-        description: 'Sesión eliminada correctamente.',
-        autoClose: 2000,
+        autoClose: 1500,
       });
       loadAll();
     }
@@ -453,20 +475,30 @@ export default function Events() {
         </DialogContent>
       </Dialog>
 
-      {/* SESSION DIALOG */}
+{/* SESSION DIALOG */}
       <Dialog open={isSessionDialogOpen} onOpenChange={setIsSessionDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{editingSession ? 'Editar Sesión' : 'Crear Sesión'}</DialogTitle>
-            <DialogDescription>Sesión o ocurrencia temporal del Sub Evento</DialogDescription>
+            <DialogDescription>
+              {selectedSubEventoForSessions ? `para ${selectedSubEventoForSessions.nombre}` : 'Selecciona un Sub Evento primero'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Sub Evento *</Label>
-              <Select value={sessionForm.eventId} onValueChange={v => setSessionForm({ ...sessionForm, eventId: v })} disabled={!!editingSession || !!selectedEvent}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar evento" /></SelectTrigger>
+              <Label>Salón (opcional)</Label>
+              <Select value={sessionForm.salonId} onValueChange={v => setSessionForm({ ...sessionForm, salonId: v })}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar salón" /></SelectTrigger>
                 <SelectContent>
-                  {(selectedEvent ? [selectedEvent] : events).map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                  {(
+                    (() => {
+                      const eventoSalones = selectedMacro ? db.eventoSalones.getByEvento(selectedMacro.id) : [];
+                      const salonIds = eventoSalones.map(es => es.salonId);
+                      return db.salones.getAll().filter(s => salonIds.includes(s.id));
+                    })()
+                  ).map(salon => (
+                    <SelectItem key={salon.id} value={salon.id}>{salon.nombre}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -474,6 +506,10 @@ export default function Events() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Hora Inicio *</Label><Input type="time" value={sessionForm.startTime} onChange={e => setSessionForm({ ...sessionForm, startTime: e.target.value })} /></div>
               <div className="space-y-2"><Label>Hora Fin *</Label><Input type="time" value={sessionForm.endTime} onChange={e => setSessionForm({ ...sessionForm, endTime: e.target.value })} /></div>
+            </div>
+            <div className="flex items-center justify-between">
+              <Label>Sesión Activa</Label>
+              <Switch checked={sessionForm.isActive} onCheckedChange={v => setSessionForm({ ...sessionForm, isActive: v })} />
             </div>
           </div>
           <DialogFooter>
@@ -897,52 +933,53 @@ export default function Events() {
             </Card>
           </div>
 
-          {/* Sessions table */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Sesiones</CardTitle>
-              <Button variant="hero" size="sm" onClick={() => openCreateSession(selectedEvent.id)}>
-                <Plus className="h-4 w-4" />Nueva Sesión
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Hora Inicio</TableHead>
-                    <TableHead>Hora Fin</TableHead>
-                    <TableHead className="text-center">Estado</TableHead>
-                    <TableHead>Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {eventSessions.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No hay sesiones. Crea una para poder activar el evento.</TableCell></TableRow>
-                  ) : eventSessions.map(session => (
-                    <TableRow key={session.id}>
-                      <TableCell>{session.date}</TableCell>
-                      <TableCell>{session.startTime}</TableCell>
-                      <TableCell>{session.endTime}</TableCell>
-                      <TableCell className="text-center">
-                        <Switch checked={session.isActive} onCheckedChange={() => {
-                          db.eventSessions.update(session.id, { isActive: !session.isActive });
-                          loadAll();
-                        }} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => openAttendance(session)} title="Asistencia"><CheckSquare className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => openEditSession(session)} title="Editar"><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDeleteSession(session)} title="Eliminar"><Trash2 className="h-4 w-4" /></Button>
+{/* Sessions table */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-lg">Sesiones</CardTitle>
+                {selectedEvent && (
+                  <Button variant="hero" size="sm" onClick={() => openCreateSession(selectedEvent.id)}>
+                    <Plus className="h-4 w-4 mr-1" />Nueva Sesión
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent>
+                {selectedEvent ? (
+                  <div className="space-y-2">
+                    {sessions.filter(s => s.eventId === selectedEvent.id).map(session => (
+                      <div key={session.id} className="flex items-center justify-between p-3 border-b hover:bg-muted/50">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium text-sm">{session.date}</span>
+                            <Clock className="h-4 w-4 text-muted-foreground ml-2" />
+                            <span className="text-sm">{session.startTime} - {session.endTime}</span>
+                          </div>
+                          {session.salonId && (
+                            <p className="text-xs text-muted-foreground ml-6">
+                              Salón: {db.eventoSalones.getById(session.salonId)?.nombre || session.salonId}
+                            </p>
+                          )}
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={session.isActive ? 'default' : 'secondary'} className="text-xs">
+                            {session.isActive ? 'Activa' : 'Inactiva'}
+                          </Badge>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingSession(session); setIsSessionDialogOpen(true); }}>
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleDeleteSession(session.id)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center py-8 text-muted-foreground">Seleccione un evento para ver sus sesiones</p>
+                )}
+              </CardContent>
+            </Card>
         </div>
         {renderDialogs()}
       </DashboardLayout>
@@ -994,11 +1031,16 @@ export default function Events() {
               )}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card className="p-4 text-center">
-                  <p className="text-3xl font-bold">{macroEvts.length}</p>
+                  <p className="text-3xl font-bold">{subEventos.filter(se => se.eventoId === selectedMacro.id).length}</p>
                   <p className="text-sm text-muted-foreground">Sub Eventos</p>
                 </Card>
                 <Card className="p-4 text-center">
-                  <p className="text-3xl font-bold">{sessions.filter(s => macroEvts.some(e => e.id === s.eventId)).length}</p>
+                  <p className="text-3xl font-bold">
+                    {(() => {
+                      const subEventoIds = subEventos.filter(se => se.eventoId === selectedMacro.id).map(se => se.id);
+                      return sessions.filter(s => subEventoIds.includes(s.subEventoId || '')).length;
+                    })()}
+                  </p>
                   <p className="text-sm text-muted-foreground">Sesiones</p>
                 </Card>
                 <Card className="p-4 text-center">
@@ -1014,49 +1056,104 @@ export default function Events() {
 
             {/* TAB: SUB EVENTOS */}
             <TabsContent value="subeventos" className="space-y-4">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Sub Eventos</CardTitle>
-                  <Button variant="hero" size="sm" onClick={() => { setEditingSubeventoId(null); setIsSubeventoModalOpen(true); }}>
-                    <Plus className="h-4 w-4 mr-1" />Nuevo Sub Evento
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  {subEventos.filter(se => se.eventoId === selectedMacro.id).length === 0 ? (
-                    <p className="text-center py-8 text-muted-foreground">No hay Sub Eventos</p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Nombre</TableHead>
-                          <TableHead>Tipo</TableHead>
-                          <TableHead>Temáticas</TableHead>
-                          <TableHead>Estado</TableHead>
-                          <TableHead>Acciones</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Lista de Sub Eventos */}
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between py-3">
+                    <CardTitle className="text-base">Sub Eventos</CardTitle>
+                    <Button variant="hero" size="sm" onClick={() => { setEditingSubeventoId(null); setEditingSession(null); setIsSubeventoModalOpen(true); }}>
+                      <Plus className="h-4 w-4 mr-1" />Nuevo
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {subEventos.filter(se => se.eventoId === selectedMacro.id).length === 0 ? (
+                      <p className="text-center py-8 text-muted-foreground text-sm">No hay Sub Eventos</p>
+                    ) : (
+                      <div className="max-h-[400px] overflow-y-auto">
                         {subEventos.filter(se => se.eventoId === selectedMacro.id).map(sub => (
-                          <TableRow key={sub.id}>
-                            <TableCell className="font-medium">{sub.nombre}</TableCell>
-                            <TableCell><Badge variant="outline">{sub.tipo}</Badge></TableCell>
-                            <TableCell>{sub.tematicaIds?.length || 0}</TableCell>
-                            <TableCell><Switch checked={sub.isActive} onCheckedChange={() => {
-                              db.subEventos.update(sub.id, { isActive: !sub.isActive });
-                              setSubEventos(db.subEventos.getAll());
-                            }} /></TableCell>
-                            <TableCell>
-                              <div className="flex gap-1">
-                                <Button variant="ghost" size="icon" onClick={() => { setEditingSubeventoId(sub.id); setIsSubeventoModalOpen(true); }}><Pencil className="h-4 w-4" /></Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                          <div 
+                            key={sub.id} 
+                            className={`flex items-center justify-between p-3 border-b cursor-pointer hover:bg-muted/50 transition-colors ${
+                              selectedSubEventoForSessions?.id === sub.id ? 'bg-primary/10 border-l-4 border-l-primary' : ''
+                            }`}
+                            onClick={() => setSelectedSubEventoForSessions(sub)}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{sub.nombre}</p>
+                              <p className="text-xs text-muted-foreground">{sub.tipo} • {sub.tematicaIds?.length || 0} temáticas</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={sub.isActive ? 'default' : 'secondary'} className="text-xs">
+                                {sub.isActive ? 'Activo' : 'Inactivo'}
+                              </Badge>
+                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); setEditingSubeventoId(sub.id); setIsSubeventoModalOpen(true); }}>
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
                         ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Panel de Sesiones del SubEvento seleccionado */}
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between py-3">
+                    <CardTitle className="text-base">
+                      {selectedSubEventoForSessions ? `Sesiones: ${selectedSubEventoForSessions.nombre}` : 'Sesiones'}
+                    </CardTitle>
+                    {selectedSubEventoForSessions && (
+                      <Button variant="outline" size="sm" onClick={() => { setEditingSession(null); setIsSessionDialogOpen(true); }}>
+                        <Plus className="h-4 w-4 mr-1" />Agregar Sesión
+                      </Button>
+                    )}
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {!selectedSubEventoForSessions ? (
+                      <p className="text-center py-8 text-muted-foreground text-sm">Seleccione un Sub Evento para ver sus sesiones</p>
+                    ) : sessions.filter(s => s.subEventoId === selectedSubEventoForSessions.id).length === 0 ? (
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground text-sm mb-2">No hay sesiones programadas</p>
+                        <Button variant="outline" size="sm" onClick={() => { setEditingSession(null); setIsSessionDialogOpen(true); }}>
+                          <Plus className="h-4 w-4 mr-1" />Crear Primera Sesión
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="max-h-[400px] overflow-y-auto">
+                        {sessions.filter(s => s.subEventoId === selectedSubEventoForSessions.id).map(session => (
+                          <div key={session.id} className="flex items-center justify-between p-3 border-b hover:bg-muted/50">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="h-4 w-4 text-muted-foreground" />
+                                <span className="font-medium text-sm">{session.date}</span>
+                                <Clock className="h-4 w-4 text-muted-foreground ml-2" />
+                                <span className="text-sm">{session.startTime} - {session.endTime}</span>
+                              </div>
+                              {session.salonId && (
+                                <p className="text-xs text-muted-foreground ml-6">
+                                  Salón: {db.salones.getById(session.salonId)?.nombre || session.salonId}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={session.isActive ? 'default' : 'secondary'} className="text-xs">
+                                {session.isActive ? 'Activa' : 'Inactiva'}
+                              </Badge>
+                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingSession(session); setIsSessionDialogOpen(true); }}>
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleDeleteSession(session.id)}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
 
             {/* TAB: HERRAMIENTAS */}

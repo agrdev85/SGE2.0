@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { useEventContext } from '@/contexts/EventContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,19 +10,33 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { db, ProgramSession, Abstract } from '@/lib/database';
-import { Calendar, Clock, MapPin, Presentation, Coffee, Plus, Pencil, Trash2, Download, Sparkles, Users } from 'lucide-react';
+import { db, ProgramSession, Abstract, EventSession } from '@/lib/database';
+import { Calendar, Clock, MapPin, Presentation, Coffee, Plus, Pencil, Trash2, Download, Sparkles, Users, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { useConfirmation, useSuccess } from '@/components/ui/ConfirmationDialog';
+import { Switch } from '@/components/ui/switch';
 
 export default function ProgramManager() {
+  const { selectedEventId, selectedEvent, eventChangeTrigger } = useEventContext();
+  const { confirm, success: showSuccess } = useConfirmation();
   const [sessions, setSessions] = useState<ProgramSession[]>([]);
+  const [availableSubEventos, setAvailableSubEventos] = useState<EventSession[]>([]);
   const [abstracts, setAbstracts] = useState<Abstract[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedSession, setSelectedSession] = useState<ProgramSession | null>(null);
   const [showSessionDialog, setShowSessionDialog] = useState(false);
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  
+  // User's personalized program
+  const [userProgram, setUserProgram] = useState<{
+    sessions: ProgramSession[];
+    preferences: Record<string, boolean>; // sessionId -> isSelected
+  }>({ sessions: [], preferences: {} });
+  
+  // Available sessions from subeventos
+  const [availableSessionsForUser, setAvailableSessionsForUser] = useState<EventSession[]>([]);
 
   const [sessionForm, setSessionForm] = useState<Partial<ProgramSession>>({
     title: '',
@@ -47,23 +62,54 @@ export default function ProgramManager() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedEventId, eventChangeTrigger]);
 
   const loadData = () => {
     try {
-      const allSessions = db.programSessions.getByEvent('1');
-      const allAbstracts = db.abstracts.getApproved('1');
+      if (!selectedEventId) {
+        setSessions([]);
+        setAbstracts([]);
+        setAvailableSubEventos([]);
+        setAvailableSessionsForUser([]);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Cargar sesiones del programa del evento seleccionado
+      const allSessions = db.programSessions.getByEvent(selectedEventId);
       setSessions(allSessions);
+      
+      // Cargar abstracts aprobados
+      const allAbstracts = db.abstracts.getApproved(selectedEventId);
       setAbstracts(allAbstracts);
+      
+      // Cargar sesiones disponibles de los subEventos para que el usuario pueda armar su programa
+      const subEventos = db.subEventos.getByEvento(selectedEventId);
+      const subEventoIds = subEventos.map(se => se.id);
+      const eventSessions = db.eventSessions.getAll().filter(s => s.subEventoId && subEventoIds.includes(s.subEventoId));
+      setAvailableSessionsForUser(eventSessions);
+      
+      // Cargar preferencias del usuario del programa
+      const savedPrefs = localStorage.getItem(`user_program_${selectedEventId}_${'current_user'}`);
+      if (savedPrefs) {
+        setUserProgram(JSON.parse(savedPrefs));
+      } else {
+        setUserProgram({ sessions: allSessions, preferences: {} });
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleGenerateProgram = async () => {
+    if (!selectedEventId) {
+      toast.error('Selecciona un evento primero');
+      return;
+    }
+    
     setIsGenerating(true);
     try {
-      const generatedSessions = db.programSessions.generateProposal('1');
+      const generatedSessions = db.programSessions.generateProposal(selectedEventId);
       toast.success(`Programa generado con ${generatedSessions.length} sesiones`);
       setShowGenerateDialog(false);
       loadData();
@@ -72,6 +118,49 @@ export default function ProgramManager() {
     } finally {
       setIsGenerating(false);
     }
+  };
+  
+  /**
+   * Alternar la selección de una sesión para el programa personalizado del usuario
+   */
+  const toggleSessionSelection = (sessionId: string) => {
+    setUserProgram(prev => {
+      const newPrefs = {
+        ...prev.preferences,
+        [sessionId]: !prev.preferences[sessionId],
+      };
+      
+      // Guardar en localStorage
+      if (selectedEventId) {
+        localStorage.setItem(`user_program_${selectedEventId}_current_user`, JSON.stringify({
+          sessions: prev.sessions,
+          preferences: newPrefs,
+        }));
+      }
+      
+      return {
+        ...prev,
+        preferences: newPrefs,
+      };
+    });
+  };
+  
+  /**
+   * Detectar solapamientos de horario
+   */
+  const findConflicts = (sessionId: string, date: string, startTime: string, endTime: string) => {
+    return userProgram.sessions.filter(s => {
+      if (s.id === sessionId) return false;
+      if (s.date !== date) return false;
+      
+      // Verificar solapamiento
+      const sStart = s.startTime.split(':').reduce((acc, t, i) => acc + parseInt(t) * (i === 0 ? 60 : 1), 0);
+      const sEnd = s.endTime.split(':').reduce((acc, t, i) => acc + parseInt(t) * (i === 0 ? 60 : 1), 0);
+      const newStart = startTime.split(':').reduce((acc, t, i) => acc + parseInt(t) * (i === 0 ? 60 : 1), 0);
+      const newEnd = endTime.split(':').reduce((acc, t, i) => acc + parseInt(t) * (i === 0 ? 60 : 1), 0);
+      
+      return (newStart < sEnd && newEnd > sStart);
+    });
   };
 
   const openNewSessionDialog = () => {
@@ -199,19 +288,23 @@ export default function ProgramManager() {
           <div>
             <h1 className="text-3xl font-display font-bold">Gestor de Programa</h1>
             <p className="text-muted-foreground mt-1">
-              Organiza el programa del evento
+              {selectedEvent ? `Evento: ${selectedEvent.name}` : 'Selecciona un evento para gestionar su programa'}
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowGenerateDialog(true)}>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Generar Programa
-            </Button>
-            <Button variant="hero" onClick={openNewSessionDialog}>
-              <Plus className="h-4 w-4 mr-2" />
-              Nueva Sesión
-            </Button>
-          </div>
+          {selectedEventId ? (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowGenerateDialog(true)}>
+                <Sparkles className="h-4 w-4 mr-2" />
+                Generar Programa
+              </Button>
+              <Button variant="hero" onClick={openNewSessionDialog}>
+                <Plus className="h-4 w-4 mr-2" />
+                Nueva Sesión
+              </Button>
+            </div>
+          ) : (
+            <p className="text-muted-foreground">Selecciona un evento primero</p>
+          )}
         </div>
 
         {/* Stats */}
